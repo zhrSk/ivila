@@ -1,30 +1,18 @@
-ivila automatic sea/forest distance v1
+ivila — Spatial Search + Real GIS Map v2
 
-What changes:
-- Admin no longer types sea/forest distance manually.
-- Clicking a property location calls /api/spatial/distances.
-- PostGIS calculates meters to nearest coastline / forest geometry.
-- Properties.beforeChange recalculates on the backend too, so client values are never trusted.
-- Reference GIS data lives in Neon table ivila_spatial_features.
-- A one-time Vercel importer can populate that table from OpenStreetMap Overpass.
+Changed / new files only:
+- components/MapExplorer.tsx
+- lib/spatial-map.ts
+- app/(frontend)/api/spatial/layers/route.ts
+- app/(frontend)/api/spatial/properties-within/route.ts
+- app/globals.css
 
-Apply:
-1) Replace/add the files in this zip.
-2) IMPORTANT: IVILA_BOOTSTRAP_SCHEMA should remain removed/0 now that Payload schema exists.
-3) In Vercel -> Settings -> Environment Variables add temporarily:
-     IVILA_IMPORT_SPATIAL_OSM = 1
-   Production only.
-4) Redeploy.
-5) Build log should contain:
-     [ivila spatial import] ready: coastline=..., forest=...
-6) Remove IVILA_IMPORT_SPATIAL_OSM (or set 0) immediately after successful import.
-7) Open /admin/new and click a location. Sea + forest distance should calculate automatically.
+What changed:
+1) Map renders real coastline / forest reference geometries from Neon/PostGIS.
+2) Viewport GIS is loaded on map move with server caching and geometry simplification.
+3) Existing approximate zones remain only as a graceful fallback.
+4) Draw-area search is now verified server-side using Payload's Point `within` spatial query.
+5) Local point-in-polygon remains only as network fallback.
 
-Optional coverage override:
-  IVILA_SPATIAL_BBOX=36.25,51.15,36.90,52.65
-Format: south,west,north,east
-
-Notes:
-- Runtime calculation is Neon/PostGIS only. Overpass is only used during the one-time import.
-- If the import service is temporarily unavailable, the Vercel build will fail rather than replacing good spatial data with empty data. Redeploy later or use another Overpass endpoint via IVILA_OVERPASS_URL.
-- The table is outside Payload's managed collection schema on purpose because it stores mixed LineString/Polygon GIS geometries.
+No new npm package is required.
+Do NOT re-enable IVILA_IMPORT_SPATIAL_OSM after the one-time import has completed.

@@ -4,10 +4,26 @@ import { useEffect, useRef, useState } from 'react'
 import { Check, Expand, LocateFixed, Pencil, RotateCcw, ShieldCheck, WifiOff } from 'lucide-react'
 import type { Property } from '@/lib/data'
 import { demoZones } from '@/lib/data'
-import type { Map as MapLibreMap, Marker as MapLibreMarker, GeoJSONSource, StyleSpecification, MapMouseEvent } from 'maplibre-gl'
+import type {
+  Map as MapLibreMap,
+  Marker as MapLibreMarker,
+  GeoJSONSource,
+  StyleSpecification,
+  MapMouseEvent,
+} from 'maplibre-gl'
 
 type LngLat = [number, number]
 type MapStatus = 'loading' | 'ready' | 'fallback'
+type GISStatus = 'loading' | 'ready' | 'fallback'
+
+type SpatialLayerResponse = {
+  ok?: boolean
+  available?: boolean
+  data?: {
+    type: 'FeatureCollection'
+    features: Array<unknown>
+  }
+}
 
 function pointInPolygon(point: LngLat, polygon: LngLat[]) {
   const [x, y] = point
@@ -15,7 +31,8 @@ function pointInPolygon(point: LngLat, polygon: LngLat[]) {
   for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
     const [xi, yi] = polygon[i]
     const [xj, yj] = polygon[j]
-    const intersect = ((yi > y) !== (yj > y)) && (x < ((xj - xi) * (y - yi)) / ((yj - yi) || 1e-12) + xi)
+    const intersect = ((yi > y) !== (yj > y))
+      && (x < ((xj - xi) * (y - yi)) / ((yj - yi) || 1e-12) + xi)
     if (intersect) inside = !inside
   }
   return inside
@@ -29,16 +46,16 @@ const rasterFallback: StyleSpecification = {
       tiles: [
         'https://a.tile.openstreetmap.org/{z}/{x}/{y}.png',
         'https://b.tile.openstreetmap.org/{z}/{x}/{y}.png',
-        'https://c.tile.openstreetmap.org/{z}/{x}/{y}.png'
+        'https://c.tile.openstreetmap.org/{z}/{x}/{y}.png',
       ],
       tileSize: 256,
-      attribution: '© OpenStreetMap contributors'
-    }
+      attribution: '© OpenStreetMap contributors',
+    },
   },
   layers: [
     { id: 'map-bg', type: 'background', paint: { 'background-color': '#dff2ec' } },
-    { id: 'osm', type: 'raster', source: 'osm', paint: { 'raster-saturation': 0.18, 'raster-contrast': 0.06 } }
-  ]
+    { id: 'osm', type: 'raster', source: 'osm', paint: { 'raster-saturation': 0.18, 'raster-contrast': 0.06 } },
+  ],
 }
 
 function compactPrice(price: string) {
@@ -50,7 +67,7 @@ export default function MapExplorer({
   selectedId,
   onSelectProperty,
   onStartDrawing,
-  onAreaSelection
+  onAreaSelection,
 }: {
   properties: Property[]
   selectedId?: string | null
@@ -63,10 +80,15 @@ export default function MapExplorer({
   const markersRef = useRef<Map<string, MapLibreMarker>>(new Map())
   const fallbackTriedRef = useRef(false)
   const readyRef = useRef(false)
+  const spatialAbortRef = useRef<AbortController | null>(null)
+  const spatialTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
   const [drawMode, setDrawMode] = useState(false)
   const [points, setPoints] = useState<LngLat[]>([])
   const [mapReady, setMapReady] = useState(false)
   const [status, setStatus] = useState<MapStatus>('loading')
+  const [gisStatus, setGISStatus] = useState<GISStatus>('loading')
+  const [areaLoading, setAreaLoading] = useState(false)
 
   useEffect(() => {
     if (!mapContainer.current || mapRef.current) return
@@ -96,34 +118,133 @@ export default function MapExplorer({
         center: [51.9607, 36.5665],
         zoom: 11.9,
         attributionControl: false,
-        maxPitch: 60
+        maxPitch: 60,
       })
       mapRef.current = map
       map.addControl(new module.NavigationControl({ showCompass: false }), 'bottom-left')
       map.addControl(new module.AttributionControl({ compact: true }), 'bottom-right')
 
-      // Keep the WebGL canvas at the exact container pixel size.
-      // This prevents a stretched/soft map when the search layout changes width.
       resizeObserver = new ResizeObserver(() => map.resize())
       resizeObserver.observe(mapContainer.current)
+
+      const setDemoVisibility = (visible: boolean) => {
+        const visibility = visible ? 'visible' : 'none'
+        for (const id of ['demo-zone-fill', 'demo-zone-line']) {
+          if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', visibility)
+        }
+      }
+
+      const loadReferenceLayers = async () => {
+        if (disposed || !map.isStyleLoaded() || !map.getSource('ivila-spatial-reference')) return
+
+        spatialAbortRef.current?.abort()
+        const controller = new AbortController()
+        spatialAbortRef.current = controller
+
+        const bounds = map.getBounds()
+        const params = new URLSearchParams({
+          west: String(bounds.getWest()),
+          south: String(bounds.getSouth()),
+          east: String(bounds.getEast()),
+          north: String(bounds.getNorth()),
+          zoom: String(map.getZoom()),
+        })
+
+        try {
+          const response = await fetch(`/api/spatial/layers?${params.toString()}`, {
+            signal: controller.signal,
+            headers: { Accept: 'application/json' },
+          })
+          if (!response.ok) throw new Error(`SPATIAL_LAYER_HTTP_${response.status}`)
+
+          const result = await response.json() as SpatialLayerResponse
+          if (disposed || controller.signal.aborted) return
+
+          const source = map.getSource('ivila-spatial-reference') as GeoJSONSource | undefined
+          if (!source) return
+
+          if (result.ok && result.available && result.data?.features?.length) {
+            source.setData(result.data as never)
+            setDemoVisibility(false)
+            setGISStatus('ready')
+          } else {
+            source.setData({ type: 'FeatureCollection', features: [] })
+            setDemoVisibility(true)
+            setGISStatus('fallback')
+          }
+        } catch (error) {
+          if (controller.signal.aborted || disposed) return
+          console.warn('ivila GIS reference layer could not be loaded:', error)
+          setDemoVisibility(true)
+          setGISStatus('fallback')
+        }
+      }
+
+      const scheduleReferenceLoad = () => {
+        if (spatialTimerRef.current) clearTimeout(spatialTimerRef.current)
+        spatialTimerRef.current = setTimeout(() => void loadReferenceLayers(), 220)
+      }
 
       const ensureLayers = () => {
         if (!map.getSource('demo-zones')) {
           map.addSource('demo-zones', { type: 'geojson', data: demoZones })
           map.addLayer({
-            id: 'demo-zone-fill', type: 'fill', source: 'demo-zones',
+            id: 'demo-zone-fill',
+            type: 'fill',
+            source: 'demo-zones',
             paint: {
               'fill-color': ['match', ['get', 'kind'], 'coast', '#0b98d4', 'forest', '#0d9962', '#a07a42'],
-              'fill-opacity': 0.17
-            }
+              'fill-opacity': 0.17,
+            },
           })
           map.addLayer({
-            id: 'demo-zone-line', type: 'line', source: 'demo-zones',
+            id: 'demo-zone-line',
+            type: 'line',
+            source: 'demo-zones',
             paint: {
               'line-color': ['match', ['get', 'kind'], 'coast', '#087bb0', 'forest', '#087648', '#896638'],
               'line-width': 2.6,
-              'line-dasharray': [2, 1.4]
-            }
+              'line-dasharray': [2, 1.4],
+            },
+          })
+        }
+
+        if (!map.getSource('ivila-spatial-reference')) {
+          map.addSource('ivila-spatial-reference', {
+            type: 'geojson',
+            data: { type: 'FeatureCollection', features: [] },
+          })
+          map.addLayer({
+            id: 'ivila-forest-fill',
+            type: 'fill',
+            source: 'ivila-spatial-reference',
+            filter: ['==', ['get', 'kind'], 'forest'],
+            paint: {
+              'fill-color': '#0d9962',
+              'fill-opacity': 0.13,
+            },
+          })
+          map.addLayer({
+            id: 'ivila-forest-line',
+            type: 'line',
+            source: 'ivila-spatial-reference',
+            filter: ['==', ['get', 'kind'], 'forest'],
+            paint: {
+              'line-color': '#087648',
+              'line-width': 1.5,
+              'line-opacity': 0.72,
+            },
+          })
+          map.addLayer({
+            id: 'ivila-coast-line',
+            type: 'line',
+            source: 'ivila-spatial-reference',
+            filter: ['==', ['get', 'kind'], 'coastline'],
+            paint: {
+              'line-color': '#078fc7',
+              'line-width': ['interpolate', ['linear'], ['zoom'], 9, 2.2, 14, 4.2],
+              'line-opacity': 0.9,
+            },
           })
         }
 
@@ -136,17 +257,17 @@ export default function MapExplorer({
         readyRef.current = true
         setMapReady(true)
         setStatus(fallbackTriedRef.current ? 'fallback' : 'ready')
+        setGISStatus('loading')
+        scheduleReferenceLoad()
       }
 
       map.on('style.load', ensureLayers)
+      map.on('moveend', scheduleReferenceLoad)
 
-      // Do not downgrade to the raster fallback because of a transient tile/glyph error.
-      // The raster fallback is visibly softer on high-DPI displays.
       map.on('error', (event) => {
         if (!readyRef.current) console.warn('MapLibre initial load warning:', event.error)
       })
 
-      // Only use raster if the vector style truly never becomes ready.
       fallbackTimer = setTimeout(() => {
         if (disposed || readyRef.current || fallbackTriedRef.current) return
         fallbackTriedRef.current = true
@@ -158,6 +279,8 @@ export default function MapExplorer({
     return () => {
       disposed = true
       if (fallbackTimer) clearTimeout(fallbackTimer)
+      if (spatialTimerRef.current) clearTimeout(spatialTimerRef.current)
+      spatialAbortRef.current?.abort()
       resizeObserver?.disconnect()
       markersRef.current.forEach(marker => marker.remove())
       markersRef.current.clear()
@@ -241,21 +364,40 @@ export default function MapExplorer({
     if (points.length < 3) {
       source.setData({
         type: 'FeatureCollection',
-        features: [{ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: points } }]
+        features: [{ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: points } }],
       })
       return
     }
     source.setData({
       type: 'FeatureCollection',
-      features: [{ type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [[...points, points[0]]] } }]
+      features: [{ type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [[...points, points[0]]] } }],
     })
   }, [points, mapReady])
 
-  const finishArea = () => {
-    if (points.length < 3) return
-    const ids = properties.filter(p => pointInPolygon([p.lng, p.lat], points)).map(p => p.id)
-    onAreaSelection(ids)
-    setDrawMode(false)
+  const finishArea = async () => {
+    if (points.length < 3 || areaLoading) return
+    setAreaLoading(true)
+
+    try {
+      const response = await fetch('/api/spatial/properties-within', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ points }),
+      })
+      const result = await response.json() as { ok?: boolean; ids?: string[] }
+      if (!response.ok || !result.ok || !Array.isArray(result.ids)) throw new Error('SPATIAL_QUERY_FAILED')
+      onAreaSelection(result.ids)
+    } catch (error) {
+      // Network fallback: never make the drawing feature unusable. The browser
+      // calculation is only a safety net; normal production requests use the
+      // Payload/PostGIS `within` query above.
+      console.warn('ivila server-side polygon query failed; using local fallback', error)
+      const ids = properties.filter(p => pointInPolygon([p.lng, p.lat], points)).map(p => p.id)
+      onAreaSelection(ids)
+    } finally {
+      setAreaLoading(false)
+      setDrawMode(false)
+    }
   }
 
   const resetArea = () => {
@@ -298,7 +440,10 @@ export default function MapExplorer({
       <div className="map-topbar">
         <div className="map-topbar-group">
           <span className="map-result-pill"><strong>{properties.length.toLocaleString('fa-IR')}</strong> فایل روی نقشه</span>
-          <span className="map-demo-label"><ShieldCheck size={15}/> محدوده‌ها در دمو تقریبی‌اند</span>
+          <span className={`map-demo-label gis-${gisStatus}`}>
+            <ShieldCheck size={15}/>
+            {gisStatus === 'ready' ? 'لایه واقعی ساحل و جنگل' : gisStatus === 'loading' ? 'در حال دریافت لایه GIS' : 'محدوده نمایشی جایگزین'}
+          </span>
         </div>
         <div className="map-topbar-actions">
           <button onClick={fitResults} className="map-tool"><Expand size={16}/><span>همه نتایج</span></button>
@@ -314,17 +459,19 @@ export default function MapExplorer({
           <button className="draw-primary" onClick={startDrawing}><Pencil size={17}/> رسم محدوده دلخواه</button>
         ) : (
           <>
-            <div className="draw-hint"><strong>{points.length.toLocaleString('fa-IR')} نقطه</strong><span>روی نقشه چند نقطه بزن و محدوده را ببند.</span></div>
-            <button className="draw-primary" disabled={points.length < 3} onClick={finishArea}><Check size={17}/> اعمال این محدوده</button>
-            <button className="draw-reset" onClick={resetArea}><RotateCcw size={16}/> لغو</button>
+            <div className="draw-hint"><strong>{points.length.toLocaleString('fa-IR')} نقطه</strong><span>روی نقشه چند نقطه بزن؛ نتیجه با PostGIS بررسی می‌شود.</span></div>
+            <button className="draw-primary" disabled={points.length < 3 || areaLoading} onClick={() => void finishArea()}>
+              <Check size={17}/>{areaLoading ? 'در حال بررسی…' : 'اعمال این محدوده'}
+            </button>
+            <button className="draw-reset" disabled={areaLoading} onClick={resetArea}><RotateCcw size={16}/> لغو</button>
           </>
         )}
       </div>
 
       <div className="map-legend">
-        <span><i className="legend-dot coast"/> ساحلی</span>
-        <span><i className="legend-dot forest"/> جنگلی</span>
-        <span><i className="legend-dot village"/> روستایی</span>
+        <span><i className="legend-dot coast"/> خط ساحلی</span>
+        <span><i className="legend-dot forest"/> محدوده جنگلی</span>
+        <span><i className="legend-dot village"/> فایل‌ها</span>
       </div>
     </div>
   )
