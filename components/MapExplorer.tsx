@@ -1,29 +1,18 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { Check, Expand, LocateFixed, Pencil, RotateCcw, ShieldCheck, WifiOff } from 'lucide-react'
+import { Check, Expand, LocateFixed, Pencil, RotateCcw, WifiOff } from 'lucide-react'
 import type { Property } from '@/lib/data'
-import { demoZones } from '@/lib/data'
 import type {
-  Map as MapLibreMap,
-  Marker as MapLibreMarker,
   GeoJSONSource,
-  StyleSpecification,
+  Map as MapLibreMap,
   MapMouseEvent,
+  Marker as MapLibreMarker,
+  StyleSpecification,
 } from 'maplibre-gl'
 
 type LngLat = [number, number]
 type MapStatus = 'loading' | 'ready' | 'fallback'
-type GISStatus = 'loading' | 'ready' | 'fallback'
-
-type SpatialLayerResponse = {
-  ok?: boolean
-  available?: boolean
-  data?: {
-    type: 'FeatureCollection'
-    features: Array<unknown>
-  }
-}
 
 function pointInPolygon(point: LngLat, polygon: LngLat[]) {
   const [x, y] = point
@@ -54,12 +43,49 @@ const rasterFallback: StyleSpecification = {
   },
   layers: [
     { id: 'map-bg', type: 'background', paint: { 'background-color': '#dff2ec' } },
-    { id: 'osm', type: 'raster', source: 'osm', paint: { 'raster-saturation': 0.18, 'raster-contrast': 0.06 } },
+    { id: 'osm', type: 'raster', source: 'osm', paint: { 'raster-saturation': 0.12, 'raster-contrast': 0.04 } },
   ],
 }
 
 function compactPrice(price: string) {
-  return price.replace(' میلیارد', 'B')
+  return price.replace(' میلیارد', 'B').replace('ماهانه ', '')
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;')
+}
+
+function fitProperties(map: MapLibreMap, properties: Property[], animated = true) {
+  if (!properties.length) return
+
+  if (properties.length === 1) {
+    map.flyTo({
+      center: [properties[0].lng, properties[0].lat],
+      zoom: 14.2,
+      duration: animated ? 800 : 0,
+      essential: true,
+    })
+    return
+  }
+
+  const lngs = properties.map(property => property.lng)
+  const lats = properties.map(property => property.lat)
+  map.fitBounds(
+    [
+      [Math.min(...lngs), Math.min(...lats)],
+      [Math.max(...lngs), Math.max(...lats)],
+    ],
+    {
+      padding: 84,
+      maxZoom: 13.2,
+      duration: animated ? 800 : 0,
+    },
+  )
 }
 
 export default function MapExplorer({
@@ -80,24 +106,24 @@ export default function MapExplorer({
   const markersRef = useRef<Map<string, MapLibreMarker>>(new Map())
   const fallbackTriedRef = useRef(false)
   const readyRef = useRef(false)
-  const spatialAbortRef = useRef<AbortController | null>(null)
-  const spatialTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const lastFitSignatureRef = useRef('')
 
   const [drawMode, setDrawMode] = useState(false)
   const [points, setPoints] = useState<LngLat[]>([])
   const [mapReady, setMapReady] = useState(false)
   const [status, setStatus] = useState<MapStatus>('loading')
-  const [gisStatus, setGISStatus] = useState<GISStatus>('loading')
   const [areaLoading, setAreaLoading] = useState(false)
 
   useEffect(() => {
     if (!mapContainer.current || mapRef.current) return
+
     let disposed = false
     let fallbackTimer: ReturnType<typeof setTimeout> | undefined
     let resizeObserver: ResizeObserver | undefined
 
     import('maplibre-gl').then(async (module) => {
       if (disposed || !mapContainer.current) return
+
       module.setWorkerUrl('/maplibre/maplibre-gl-worker.mjs')
 
       const rtlStatus = module.getRTLTextPluginStatus()
@@ -120,6 +146,7 @@ export default function MapExplorer({
         attributionControl: false,
         maxPitch: 60,
       })
+
       mapRef.current = map
       map.addControl(new module.NavigationControl({ showCompass: false }), 'bottom-left')
       map.addControl(new module.AttributionControl({ compact: true }), 'bottom-right')
@@ -127,143 +154,32 @@ export default function MapExplorer({
       resizeObserver = new ResizeObserver(() => map.resize())
       resizeObserver.observe(mapContainer.current)
 
-      const setDemoVisibility = (visible: boolean) => {
-        const visibility = visible ? 'visible' : 'none'
-        for (const id of ['demo-zone-fill', 'demo-zone-line']) {
-          if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', visibility)
-        }
-      }
-
-      const loadReferenceLayers = async () => {
-        if (disposed || !map.isStyleLoaded() || !map.getSource('ivila-spatial-reference')) return
-
-        spatialAbortRef.current?.abort()
-        const controller = new AbortController()
-        spatialAbortRef.current = controller
-
-        const bounds = map.getBounds()
-        const params = new URLSearchParams({
-          west: String(bounds.getWest()),
-          south: String(bounds.getSouth()),
-          east: String(bounds.getEast()),
-          north: String(bounds.getNorth()),
-          zoom: String(map.getZoom()),
-        })
-
-        try {
-          const response = await fetch(`/api/spatial/layers?${params.toString()}`, {
-            signal: controller.signal,
-            headers: { Accept: 'application/json' },
-          })
-          if (!response.ok) throw new Error(`SPATIAL_LAYER_HTTP_${response.status}`)
-
-          const result = await response.json() as SpatialLayerResponse
-          if (disposed || controller.signal.aborted) return
-
-          const source = map.getSource('ivila-spatial-reference') as GeoJSONSource | undefined
-          if (!source) return
-
-          if (result.ok && result.available && result.data?.features?.length) {
-            source.setData(result.data as never)
-            setDemoVisibility(false)
-            setGISStatus('ready')
-          } else {
-            source.setData({ type: 'FeatureCollection', features: [] })
-            setDemoVisibility(true)
-            setGISStatus('fallback')
-          }
-        } catch (error) {
-          if (controller.signal.aborted || disposed) return
-          console.warn('ivila GIS reference layer could not be loaded:', error)
-          setDemoVisibility(true)
-          setGISStatus('fallback')
-        }
-      }
-
-      const scheduleReferenceLoad = () => {
-        if (spatialTimerRef.current) clearTimeout(spatialTimerRef.current)
-        spatialTimerRef.current = setTimeout(() => void loadReferenceLayers(), 220)
-      }
-
       const ensureLayers = () => {
-        if (!map.getSource('demo-zones')) {
-          map.addSource('demo-zones', { type: 'geojson', data: demoZones })
-          map.addLayer({
-            id: 'demo-zone-fill',
-            type: 'fill',
-            source: 'demo-zones',
-            paint: {
-              'fill-color': ['match', ['get', 'kind'], 'coast', '#0b98d4', 'forest', '#0d9962', '#a07a42'],
-              'fill-opacity': 0.17,
-            },
-          })
-          map.addLayer({
-            id: 'demo-zone-line',
-            type: 'line',
-            source: 'demo-zones',
-            paint: {
-              'line-color': ['match', ['get', 'kind'], 'coast', '#087bb0', 'forest', '#087648', '#896638'],
-              'line-width': 2.6,
-              'line-dasharray': [2, 1.4],
-            },
-          })
-        }
-
-        if (!map.getSource('ivila-spatial-reference')) {
-          map.addSource('ivila-spatial-reference', {
+        if (!map.getSource('user-draw')) {
+          map.addSource('user-draw', {
             type: 'geojson',
             data: { type: 'FeatureCollection', features: [] },
           })
           map.addLayer({
-            id: 'ivila-forest-fill',
+            id: 'user-draw-fill',
             type: 'fill',
-            source: 'ivila-spatial-reference',
-            filter: ['==', ['get', 'kind'], 'forest'],
-            paint: {
-              'fill-color': '#0d9962',
-              'fill-opacity': 0.13,
-            },
+            source: 'user-draw',
+            paint: { 'fill-color': '#0d8f65', 'fill-opacity': 0.18 },
           })
           map.addLayer({
-            id: 'ivila-forest-line',
+            id: 'user-draw-line',
             type: 'line',
-            source: 'ivila-spatial-reference',
-            filter: ['==', ['get', 'kind'], 'forest'],
-            paint: {
-              'line-color': '#087648',
-              'line-width': 1.5,
-              'line-opacity': 0.72,
-            },
+            source: 'user-draw',
+            paint: { 'line-color': '#08744f', 'line-width': 3.2, 'line-dasharray': [1.5, 1] },
           })
-          map.addLayer({
-            id: 'ivila-coast-line',
-            type: 'line',
-            source: 'ivila-spatial-reference',
-            filter: ['==', ['get', 'kind'], 'coastline'],
-            paint: {
-              'line-color': '#078fc7',
-              'line-width': ['interpolate', ['linear'], ['zoom'], 9, 2.2, 14, 4.2],
-              'line-opacity': 0.9,
-            },
-          })
-        }
-
-        if (!map.getSource('user-draw')) {
-          map.addSource('user-draw', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } })
-          map.addLayer({ id: 'user-draw-fill', type: 'fill', source: 'user-draw', paint: { 'fill-color': '#0d8f65', 'fill-opacity': 0.19 } })
-          map.addLayer({ id: 'user-draw-line', type: 'line', source: 'user-draw', paint: { 'line-color': '#08744f', 'line-width': 3.2, 'line-dasharray': [1.5, 1] } })
         }
 
         readyRef.current = true
         setMapReady(true)
         setStatus(fallbackTriedRef.current ? 'fallback' : 'ready')
-        setGISStatus('loading')
-        scheduleReferenceLoad()
       }
 
       map.on('style.load', ensureLayers)
-      map.on('moveend', scheduleReferenceLoad)
-
       map.on('error', (event) => {
         if (!readyRef.current) console.warn('MapLibre initial load warning:', event.error)
       })
@@ -272,15 +188,17 @@ export default function MapExplorer({
         if (disposed || readyRef.current || fallbackTriedRef.current) return
         fallbackTriedRef.current = true
         setStatus('fallback')
-        try { map.setStyle(rasterFallback) } catch { /* no-op */ }
+        try {
+          map.setStyle(rasterFallback)
+        } catch {
+          // no-op
+        }
       }, 12000)
     })
 
     return () => {
       disposed = true
       if (fallbackTimer) clearTimeout(fallbackTimer)
-      if (spatialTimerRef.current) clearTimeout(spatialTimerRef.current)
-      spatialAbortRef.current?.abort()
       resizeObserver?.disconnect()
       markersRef.current.forEach(marker => marker.remove())
       markersRef.current.clear()
@@ -294,58 +212,77 @@ export default function MapExplorer({
     let cancelled = false
 
     import('maplibre-gl').then((module) => {
-      if (cancelled || !mapRef.current) return
+      const map = mapRef.current
+      if (cancelled || !map) return
+
       markersRef.current.forEach(marker => marker.remove())
       markersRef.current.clear()
 
-      properties.forEach((p) => {
+      properties.forEach((property) => {
         const el = document.createElement('button')
         el.type = 'button'
-        el.className = `map-price-marker marker-${p.lifestyle} ${selectedId === p.id ? 'selected' : ''}`
-        el.textContent = compactPrice(p.price)
-        el.title = p.title
-        el.addEventListener('click', () => onSelectProperty?.(p.id))
+        el.className = `map-price-marker marker-${property.lifestyle} ${selectedId === property.id ? 'selected' : ''}`
+        el.textContent = compactPrice(property.price)
+        el.title = property.title
+        el.addEventListener('click', () => onSelectProperty?.(property.id))
 
         const popupHtml = `
           <div class="ivila-map-popup" dir="rtl">
-            <img src="${p.image}" alt="" />
+            <img src="${escapeHtml(property.image)}" alt="" />
             <div>
-              <small>${p.code} · ${p.location}</small>
-              <strong>${p.title}</strong>
-              <span>${p.area.toLocaleString('fa-IR')} متر · ${p.type}</span>
-              <b>${p.price}</b>
+              <small>${escapeHtml(property.code)} · ${escapeHtml(property.location)}</small>
+              <strong>${escapeHtml(property.title)}</strong>
+              <span>${property.area.toLocaleString('fa-IR')} متر · ${escapeHtml(property.type)}</span>
+              <b>${escapeHtml(property.price)}</b>
             </div>
           </div>`
 
         const marker = new module.Marker({ element: el, anchor: 'bottom' })
-          .setLngLat([p.lng, p.lat])
+          .setLngLat([property.lng, property.lat])
           .setPopup(new module.Popup({ offset: 22, closeButton: false, maxWidth: '285px' }).setHTML(popupHtml))
-          .addTo(mapRef.current!)
+          .addTo(map)
 
-        markersRef.current.set(p.id, marker)
+        markersRef.current.set(property.id, marker)
       })
+
+      const signature = properties.map(property => property.id).sort().join('|')
+      if (!selectedId && !drawMode && signature && signature !== lastFitSignatureRef.current) {
+        lastFitSignatureRef.current = signature
+        fitProperties(map, properties, false)
+      }
     })
 
-    return () => { cancelled = true }
-  }, [properties, mapReady, selectedId, onSelectProperty])
+    return () => {
+      cancelled = true
+    }
+  }, [properties, mapReady, selectedId, onSelectProperty, drawMode])
 
   useEffect(() => {
     if (!mapReady || !mapRef.current || !selectedId) return
-    const property = properties.find(p => p.id === selectedId)
+    const property = properties.find(item => item.id === selectedId)
     if (!property) return
-    mapRef.current.flyTo({ center: [property.lng, property.lat], zoom: 14.2, duration: 850, essential: true })
+
+    mapRef.current.flyTo({
+      center: [property.lng, property.lat],
+      zoom: 14.2,
+      duration: 850,
+      essential: true,
+    })
     markersRef.current.get(selectedId)?.togglePopup()
   }, [selectedId, properties, mapReady])
 
   useEffect(() => {
     const map = mapRef.current
     if (!map || !mapReady) return
+
     const handleClick = (event: MapMouseEvent) => {
       if (!drawMode) return
-      setPoints(prev => [...prev, [event.lngLat.lng, event.lngLat.lat]])
+      setPoints(previous => [...previous, [event.lngLat.lng, event.lngLat.lat]])
     }
+
     map.on('click', handleClick)
     map.getCanvas().style.cursor = drawMode ? 'crosshair' : ''
+
     return () => {
       map.off('click', handleClick)
       if (map.getCanvas()) map.getCanvas().style.cursor = ''
@@ -361,16 +298,30 @@ export default function MapExplorer({
       source.setData({ type: 'FeatureCollection', features: [] })
       return
     }
+
     if (points.length < 3) {
       source.setData({
         type: 'FeatureCollection',
-        features: [{ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: points } }],
+        features: [
+          {
+            type: 'Feature',
+            properties: {},
+            geometry: { type: 'LineString', coordinates: points },
+          },
+        ],
       })
       return
     }
+
     source.setData({
       type: 'FeatureCollection',
-      features: [{ type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [[...points, points[0]]] } }],
+      features: [
+        {
+          type: 'Feature',
+          properties: {},
+          geometry: { type: 'Polygon', coordinates: [[...points, points[0]]] },
+        },
+      ],
     })
   }, [points, mapReady])
 
@@ -385,14 +336,15 @@ export default function MapExplorer({
         body: JSON.stringify({ points }),
       })
       const result = await response.json() as { ok?: boolean; ids?: string[] }
-      if (!response.ok || !result.ok || !Array.isArray(result.ids)) throw new Error('SPATIAL_QUERY_FAILED')
+      if (!response.ok || !result.ok || !Array.isArray(result.ids)) {
+        throw new Error('SPATIAL_QUERY_FAILED')
+      }
       onAreaSelection(result.ids)
     } catch (error) {
-      // Network fallback: never make the drawing feature unusable. The browser
-      // calculation is only a safety net; normal production requests use the
-      // Payload/PostGIS `within` query above.
       console.warn('ivila server-side polygon query failed; using local fallback', error)
-      const ids = properties.filter(p => pointInPolygon([p.lng, p.lat], points)).map(p => p.id)
+      const ids = properties
+        .filter(property => pointInPolygon([property.lng, property.lat], points))
+        .map(property => property.id)
       onAreaSelection(ids)
     } finally {
       setAreaLoading(false)
@@ -412,38 +364,23 @@ export default function MapExplorer({
     setDrawMode(true)
   }
 
-  const recenter = () => mapRef.current?.flyTo({ center: [51.9607, 36.5665], zoom: 11.9, duration: 900 })
+  const recenter = () => {
+    mapRef.current?.flyTo({ center: [51.9607, 36.5665], zoom: 11.9, duration: 900 })
+  }
 
   const fitResults = () => {
-    const map = mapRef.current
-    if (!map || properties.length === 0) return
-    const lngs = properties.map(p => p.lng)
-    const lats = properties.map(p => p.lat)
-    const minLng = Math.min(...lngs)
-    const maxLng = Math.max(...lngs)
-    const minLat = Math.min(...lats)
-    const maxLat = Math.max(...lats)
-
-    if (properties.length === 1) {
-      map.flyTo({ center: [properties[0].lng, properties[0].lat], zoom: 14.2, duration: 850 })
-      return
-    }
-
-    map.fitBounds([[minLng, minLat], [maxLng, maxLat]], { padding: 90, maxZoom: 13.3, duration: 900 })
+    if (!mapRef.current) return
+    fitProperties(mapRef.current, properties)
   }
 
   return (
-    <div className="map-shell" id="map">
+    <div className="map-shell map-search-shell" id="map">
       <div className="map-offline-backdrop" aria-hidden="true"><span>دریای خزر</span><i/><b>رویان</b></div>
       <div ref={mapContainer} className="map-canvas" />
 
       <div className="map-topbar">
         <div className="map-topbar-group">
           <span className="map-result-pill"><strong>{properties.length.toLocaleString('fa-IR')}</strong> فایل روی نقشه</span>
-          <span className={`map-demo-label gis-${gisStatus}`}>
-            <ShieldCheck size={15}/>
-            {gisStatus === 'ready' ? 'لایه واقعی ساحل و جنگل' : gisStatus === 'loading' ? 'در حال دریافت لایه GIS' : 'محدوده نمایشی جایگزین'}
-          </span>
         </div>
         <div className="map-topbar-actions">
           <button onClick={fitResults} className="map-tool"><Expand size={16}/><span>همه نتایج</span></button>
@@ -459,19 +396,16 @@ export default function MapExplorer({
           <button className="draw-primary" onClick={startDrawing}><Pencil size={17}/> رسم محدوده دلخواه</button>
         ) : (
           <>
-            <div className="draw-hint"><strong>{points.length.toLocaleString('fa-IR')} نقطه</strong><span>روی نقشه چند نقطه بزن؛ نتیجه با PostGIS بررسی می‌شود.</span></div>
+            <div className="draw-hint">
+              <strong>{points.length.toLocaleString('fa-IR')} نقطه</strong>
+              <span>روی نقشه چند نقطه بزن و بعد محدوده را اعمال کن.</span>
+            </div>
             <button className="draw-primary" disabled={points.length < 3 || areaLoading} onClick={() => void finishArea()}>
               <Check size={17}/>{areaLoading ? 'در حال بررسی…' : 'اعمال این محدوده'}
             </button>
             <button className="draw-reset" disabled={areaLoading} onClick={resetArea}><RotateCcw size={16}/> لغو</button>
           </>
         )}
-      </div>
-
-      <div className="map-legend">
-        <span><i className="legend-dot coast"/> خط ساحلی</span>
-        <span><i className="legend-dot forest"/> محدوده جنگلی</span>
-        <span><i className="legend-dot village"/> فایل‌ها</span>
       </div>
     </div>
   )

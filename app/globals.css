@@ -1111,3 +1111,163 @@ html, body {
 @media (max-width: 640px) {
   .draw-hint span { max-width: 190px; }
 }
+
+/* ===== ivila split search UX: area mode / map mode ===== */
+.search-mode-switch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  width: min(650px, 100%);
+  margin: 20px 0 16px auto;
+  padding: 6px;
+  border: 1px solid rgba(7,83,63,.11);
+  border-radius: 18px;
+  background: rgba(255,255,255,.82);
+  box-shadow: 0 14px 42px rgba(6,74,56,.06);
+  backdrop-filter: blur(16px);
+}
+.search-mode-option {
+  min-width: 0;
+  min-height: 68px;
+  border: 1px solid transparent;
+  border-radius: 13px;
+  padding: 10px 12px;
+  background: transparent;
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: right;
+  font: inherit;
+  cursor: pointer;
+  transition: background .18s ease, border-color .18s ease, box-shadow .18s ease, transform .18s ease;
+}
+.search-mode-option:hover { background: rgba(7,83,63,.035); }
+.search-mode-option.active {
+  background: #fff;
+  border-color: rgba(7,83,63,.12);
+  box-shadow: 0 9px 26px rgba(7,83,63,.09);
+}
+.search-mode-option:active { transform: translateY(1px); }
+.search-mode-option > span:last-child { min-width: 0; }
+.search-mode-option strong,
+.search-mode-option small { display: block; }
+.search-mode-option strong { font-size: 11px; line-height: 1.5; }
+.search-mode-option small { margin-top: 4px; color: var(--muted); font-size: 8.5px; line-height: 1.5; }
+.search-mode-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+}
+.search-mode-icon.areas { color: var(--forest); background: #eaf6f0; }
+.search-mode-icon.map { color: var(--sea); background: #eaf7fb; }
+.search-mode-option.active .search-mode-icon.areas { background: var(--forest); color: #fff; }
+.search-mode-option.active .search-mode-icon.map { background: var(--sea); color: #fff; }
+
+.map-mode-callout {
+  margin-bottom: 18px;
+  min-height: 66px;
+  padding: 11px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(15,147,189,.14);
+  background: linear-gradient(90deg, rgba(15,147,189,.075), rgba(11,122,80,.045));
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.map-mode-callout-icon {
+  width: 38px;
+  height: 38px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  border-radius: 11px;
+  color: var(--sea-dark);
+  background: rgba(255,255,255,.82);
+  border: 1px solid rgba(15,147,189,.12);
+}
+.map-mode-callout strong,
+.map-mode-callout span { display: block; }
+.map-mode-callout strong { font-size: 10.5px; }
+.map-mode-callout span { margin-top: 3px; color: var(--muted); font-size: 8.5px; line-height: 1.65; }
+
+/* Area search deliberately has no map. Give the inventory the whole canvas. */
+.discovery-layout.areas-only {
+  display: block;
+  min-height: 0;
+  overflow: visible;
+  direction: rtl;
+}
+.discovery-layout.areas-only .results-pane-wide {
+  max-height: none;
+  overflow: visible;
+  border: 0;
+  padding: 18px;
+}
+.property-list.property-list-wide {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+.property-list.property-list-wide .empty-state { grid-column: 1 / -1; }
+
+/* The customer map is intentionally clean: only base map, property markers and
+   the polygon the customer draws. Coast/forest GIS stays server-side. */
+.map-search-shell .map-legend,
+.map-search-shell .map-demo-label { display: none !important; }
+.map-search-active .map-pane { min-height: 760px; }
+.map-search-active .map-shell { min-height: 760px; }
+
+@media (max-width: 1100px) {
+  .property-list.property-list-wide { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 760px) {
+  .search-mode-switch {
+    width: 100%;
+    margin: 14px 0 14px;
+    padding: 5px;
+    gap: 5px;
+    border-radius: 15px;
+  }
+  .search-mode-option {
+    min-height: 58px;
+    padding: 8px;
+    gap: 7px;
+    border-radius: 11px;
+  }
+  .search-mode-icon { width: 32px; height: 32px; border-radius: 9px; }
+  .search-mode-icon svg { width: 17px; height: 17px; }
+  .search-mode-option strong { font-size: 9.5px; }
+  .search-mode-option small { display: none; }
+
+  .map-mode-callout { padding: 9px 10px; margin-bottom: 12px; }
+  .map-mode-callout-icon { width: 34px; height: 34px; }
+  .map-mode-callout strong { font-size: 10px; }
+  .map-mode-callout span { font-size: 8px; }
+
+  .discovery-layout.areas-only { display: block !important; }
+  .discovery-layout.areas-only .results-pane-wide {
+    padding: 11px;
+    border-top: 0;
+  }
+  .property-list.property-list-wide { grid-template-columns: 1fr; gap: 10px; }
+
+  .discovery-layout.map-search-active {
+    display: flex;
+    flex-direction: column-reverse;
+  }
+  .map-search-active .map-pane,
+  .map-search-active .map-shell {
+    min-height: 480px;
+    height: 480px;
+  }
+}
+
+@media (max-width: 430px) {
+  .search-mode-option { min-height: 54px; padding-inline: 7px; }
+  .search-mode-option strong { font-size: 9px; }
+  .search-mode-icon { width: 30px; height: 30px; }
+}

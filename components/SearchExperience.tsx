@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import {
   Building2,
   House,
+  LayoutGrid,
+  Map as MapIcon,
   MapPinned,
   RotateCcw,
   Search,
@@ -34,6 +36,8 @@ type HeroSearchDetail = {
   deal?: 'فروش' | 'اجاره'
   lifestyle?: Lifestyle
 }
+
+type SearchMode = 'areas' | 'map'
 
 function normalizeSearchText(value: string) {
   const persianDigits = '۰۱۲۳۴۵۶۷۸۹'
@@ -76,6 +80,7 @@ export default function SearchExperience({ properties }: { properties: Property[
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [textQuery, setTextQuery] = useState('')
   const [deal, setDeal] = useState<'همه' | 'فروش' | 'اجاره'>('همه')
+  const [searchMode, setSearchMode] = useState<SearchMode>('areas')
 
   useEffect(() => {
     const handleHeroSearch = (event: Event) => {
@@ -83,6 +88,7 @@ export default function SearchExperience({ properties }: { properties: Property[
       setTextQuery(detail.query ?? '')
       setDeal(detail.deal ?? 'همه')
       if (detail.lifestyle) setLifestyle(detail.lifestyle)
+      setSearchMode('areas')
       setAreaIds(null)
       setSelectedId(null)
     }
@@ -140,6 +146,24 @@ export default function SearchExperience({ properties }: { properties: Property[
     setDeal('همه')
   }
 
+  const changeSearchMode = (mode: SearchMode) => {
+    setSearchMode(mode)
+    setAreaIds(null)
+    setSelectedId(null)
+    if (mode === 'map') setLifestyle('all')
+  }
+
+  const focusPropertyOnMap = (id: string) => {
+    setSearchMode('map')
+    setLifestyle('all')
+    setAreaIds(null)
+    setSelectedId(id)
+  }
+
+  const resultsTitle = searchMode === 'map'
+    ? (areaIds ? 'داخل محدوده انتخاب‌شده روی نقشه' : 'نتایج جستجوی نقشه')
+    : lifestyleLabels[lifestyle]
+
   return (
     <section className="search-section" id="search">
       <div className="container">
@@ -148,22 +172,61 @@ export default function SearchExperience({ properties }: { properties: Property[
             <span className="eyebrow dark">جستجوی جغرافیایی ivila</span>
             <h2>بین دریا و جنگل، دقیقاً همان محدوده‌ای را پیدا کن که می‌خواهی.</h2>
           </div>
-          <p>فایل‌ها را با سبک منطقه، فاصله تا ساحل یا جنگل، قیمت، متراژ و سند فیلتر کن؛ یا محدوده دلخواهت را مستقیم روی نقشه بکش.</p>
+          <p>دو راه برای پیدا کردن ملک داری: سریع با محدوده‌های منطقه‌ای جستجو کن، یا فقط وقتی لازم داری نقشه را باز کن و محدوده دلخواهت را روی آن بکش.</p>
         </div>
 
-        <div className="lifestyle-grid" id="areas">
-          {lifestyles.map(item => (
-            <button
-              key={item.key}
-              className={`lifestyle-card tone-${item.key} ${lifestyle === item.key ? 'active' : ''}`}
-              onClick={() => { setLifestyle(item.key); setAreaIds(null); setSelectedId(null) }}
-            >
-              <span className="lifestyle-icon">{item.icon}</span>
-              <strong>{lifestyleLabels[item.key]}</strong>
-              <small>{item.description}</small>
-            </button>
-          ))}
+        <div className="search-mode-switch" role="tablist" aria-label="روش جستجوی ملک">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={searchMode === 'areas'}
+            className={`search-mode-option ${searchMode === 'areas' ? 'active' : ''}`}
+            onClick={() => changeSearchMode('areas')}
+          >
+            <span className="search-mode-icon areas"><LayoutGrid size={20}/></span>
+            <span>
+              <strong>جستجو با محدوده‌ها</strong>
+              <small>ساحلی، جنگلی، روستایی و شهری</small>
+            </span>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={searchMode === 'map'}
+            className={`search-mode-option ${searchMode === 'map' ? 'active' : ''}`}
+            onClick={() => changeSearchMode('map')}
+          >
+            <span className="search-mode-icon map"><MapIcon size={20}/></span>
+            <span>
+              <strong>جستجو روی نقشه</strong>
+              <small>محدوده دلخواهت را خودت رسم کن</small>
+            </span>
+          </button>
         </div>
+
+        {searchMode === 'areas' ? (
+          <div className="lifestyle-grid" id="areas">
+            {lifestyles.map(item => (
+              <button
+                key={item.key}
+                className={`lifestyle-card tone-${item.key} ${lifestyle === item.key ? 'active' : ''}`}
+                onClick={() => { setLifestyle(item.key); setAreaIds(null); setSelectedId(null) }}
+              >
+                <span className="lifestyle-icon">{item.icon}</span>
+                <strong>{lifestyleLabels[item.key]}</strong>
+                <small>{item.description}</small>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div className="map-mode-callout">
+            <div className="map-mode-callout-icon"><MapPinned size={19}/></div>
+            <div>
+              <strong>جستجوی محدوده‌ای روی نقشه</strong>
+              <span>نقشه فقط در این حالت نمایش داده می‌شود. می‌توانی نتایج را ببینی یا با «رسم محدوده دلخواه» دقیقاً قسمت موردنظرت را انتخاب کنی.</span>
+            </div>
+          </div>
+        )}
 
         {(textQuery || deal !== 'همه') && (
           <div className="hero-search-resultbar" aria-live="polite">
@@ -282,26 +345,47 @@ export default function SearchExperience({ properties }: { properties: Property[
           </div>
         </div>
 
-        <div className="discovery-layout">
-          <div className="results-pane">
+        <div className={`discovery-layout ${searchMode === 'areas' ? 'areas-only' : 'map-search-active'}`}>
+          <div className={`results-pane ${searchMode === 'areas' ? 'results-pane-wide' : ''}`}>
             <div className="results-head">
-              <div><MapPinned size={18}/><strong>{areaIds ? 'داخل محدوده رسم‌شده' : lifestyleLabels[lifestyle]}</strong><span>{filtered.length.toLocaleString('fa-IR')} فایل</span></div>
-              {areaIds && <button onClick={() => setAreaIds(null)}>حذف محدوده</button>}
+              <div>
+                {searchMode === 'areas' ? <LayoutGrid size={18}/> : <MapPinned size={18}/>}
+                <strong>{resultsTitle}</strong>
+                <span>{filtered.length.toLocaleString('fa-IR')} فایل</span>
+              </div>
+              {areaIds && <button onClick={() => setAreaIds(null)}>حذف محدوده نقشه</button>}
             </div>
-            <div className="property-list">
-              {filtered.map(p => <PropertyCard key={p.id} property={p} compact onMapFocus={(id) => setSelectedId(id)} />)}
-              {filtered.length === 0 && <div className="empty-state"><MapPinned size={28}/><strong>با این ترکیب فیلتر، فایل نمونه‌ای نداریم.</strong><span>فاصله تا دریا/جنگل یا بازه قیمت را کمی بازتر کن.</span><button onClick={resetFilters}>نمایش همه فایل‌ها</button></div>}
+            <div className={`property-list ${searchMode === 'areas' ? 'property-list-wide' : ''}`}>
+              {filtered.map(p => (
+                <PropertyCard
+                  key={p.id}
+                  property={p}
+                  compact
+                  onMapFocus={searchMode === 'areas' ? focusPropertyOnMap : (id) => setSelectedId(id)}
+                />
+              ))}
+              {filtered.length === 0 && (
+                <div className="empty-state">
+                  <MapPinned size={28}/>
+                  <strong>با این ترکیب فیلتر، فایلی پیدا نشد.</strong>
+                  <span>{searchMode === 'map' && areaIds ? 'محدوده رسم‌شده را کمی بزرگ‌تر کن یا بعضی فیلترها را بازتر کن.' : 'فاصله تا دریا/جنگل یا بازه قیمت را کمی بازتر کن.'}</span>
+                  <button onClick={resetFilters}>نمایش همه فایل‌ها</button>
+                </div>
+              )}
             </div>
           </div>
-          <div className="map-pane">
-            <MapExplorer
-              properties={areaIds ? filtered : filterBaseForMap}
-              selectedId={selectedId}
-              onSelectProperty={setSelectedId}
-              onStartDrawing={() => { setAreaIds(null); setSelectedId(null) }}
-              onAreaSelection={setAreaIds}
-            />
-          </div>
+
+          {searchMode === 'map' && (
+            <div className="map-pane">
+              <MapExplorer
+                properties={areaIds ? filtered : filterBaseForMap}
+                selectedId={selectedId}
+                onSelectProperty={setSelectedId}
+                onStartDrawing={() => { setAreaIds(null); setSelectedId(null) }}
+                onAreaSelection={setAreaIds}
+              />
+            </div>
+          )}
         </div>
       </div>
     </section>
