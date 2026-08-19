@@ -1,13 +1,16 @@
 /**
  * One-time Vercel/Neon bootstrap for a brand-new ivila database.
  *
- * Payload's Postgres adapter only performs Drizzle schema push when
- * NODE_ENV !== 'production'. We opt into that behavior explicitly and only
- * when IVILA_BOOTSTRAP_SCHEMA=1 is present in the build environment.
+ * Payload's Postgres adapter performs Drizzle schema push when running outside
+ * production. We opt into that behavior explicitly and only when
+ * IVILA_BOOTSTRAP_SCHEMA=1 is present in the build environment.
  *
  * IMPORTANT: remove/disable IVILA_BOOTSTRAP_SCHEMA after the first successful
  * deployment. Future schema changes should use committed migrations.
  */
+
+// Keep this file an ES module so top-level await is valid during Next.js type-check.
+export {}
 
 const enabled = process.env.IVILA_BOOTSTRAP_SCHEMA === '1'
 
@@ -26,9 +29,9 @@ if (!process.env.PAYLOAD_SECRET) {
   process.exit(1)
 }
 
-// This process is dedicated to bootstrap only. Changing NODE_ENV here does not
-// affect the parent npm/Vercel build process that runs Next.js afterwards.
-process.env.NODE_ENV = 'development'
+// This process is dedicated to bootstrap only. Using Object.assign avoids the
+// readonly NODE_ENV typing exposed during Next.js production type-checking.
+Object.assign(process.env, { NODE_ENV: 'development' })
 delete process.env.PAYLOAD_MIGRATING
 
 try {
