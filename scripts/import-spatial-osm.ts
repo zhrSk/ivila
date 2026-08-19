@@ -7,10 +7,11 @@
  *
  * Optional:
  *   IVILA_SPATIAL_BBOX="36.25,51.15,36.90,52.65"
- *   IVILA_OVERPASS_URL="https://overpass-api.de/api/interpreter"
+ *   IVILA_OVERPASS_URL="https://overpass.kumi.systems/api/interpreter"
  *
- * Remove IVILA_IMPORT_SPATIAL_OSM after the successful deploy. Runtime distance
- * calculations use Neon only and do not call Overpass.
+ * The importer deliberately splits the relatively expensive forest query into
+ * smaller bbox tiles and can fail over between public Overpass instances. This
+ * is a one-time bootstrap only; runtime distance calculations use Neon/PostGIS.
  */
 export {}
 
@@ -33,7 +34,23 @@ if (bboxParts.length !== 4 || bboxParts.some(value => !Number.isFinite(value))) 
   process.exit(1)
 }
 
-const endpoint = process.env.IVILA_OVERPASS_URL || 'https://overpass-api.de/api/interpreter'
+const [south, west, north, east] = bboxParts
+if (south >= north || west >= east) {
+  console.error('[ivila spatial import] IVILA_SPATIAL_BBOX bounds are invalid')
+  process.exit(1)
+}
+
+const defaultEndpoints = [
+  'https://overpass.kumi.systems/api/interpreter',
+  'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
+  'https://overpass-api.de/api/interpreter',
+]
+
+const configuredEndpoint = process.env.IVILA_OVERPASS_URL?.trim()
+const endpoints = [...new Set([
+  ...(configuredEndpoint ? [configuredEndpoint] : []),
+  ...defaultEndpoints,
+])]
 
 type OSMPoint = { lat: number; lon: number }
 type OSMMember = {
@@ -50,6 +67,7 @@ type OSMElement = {
   members?: OSMMember[]
 }
 type OverpassResponse = { elements?: OSMElement[] }
+type BBox = [number, number, number, number]
 
 type SpatialFeature = {
   kind: 'coastline' | 'forest'
@@ -63,6 +81,8 @@ type PgClientLike = {
   release(): void
 }
 type PgPoolLike = { connect(): Promise<PgClientLike> }
+
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
 function samePoint(a: number[] | undefined, b: number[] | undefined) {
   return Boolean(a && b && a[0] === b[0] && a[1] === b[1])
@@ -168,44 +188,155 @@ function parseForest(elements: OSMElement[]): SpatialFeature[] {
   return features
 }
 
-async function overpass(query: string) {
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
-      'User-Agent': 'ivila-estate-spatial-import/0.2',
-    },
-    body: new URLSearchParams({ data: query }),
-    signal: AbortSignal.timeout(150_000),
-  })
-
-  if (!response.ok) {
-    throw new Error(`OVERPASS_${response.status}`)
-  }
-
-  return await response.json() as OverpassResponse
+function bboxString(box: BBox) {
+  return box.map(value => Number(value.toFixed(6))).join(',')
 }
 
-const coastQuery = `[out:json][timeout:90];way["natural"="coastline"](${bbox});out geom;`
-const forestQuery = `[out:json][timeout:120];(way["natural"="wood"](${bbox});way["landuse"="forest"](${bbox});relation["natural"="wood"](${bbox});relation["landuse"="forest"](${bbox}););out body geom;`
+function splitBBox(box: BBox, rows: number, columns: number): BBox[] {
+  const [s, w, n, e] = box
+  const latStep = (n - s) / rows
+  const lonStep = (e - w) / columns
+  const tiles: BBox[] = []
+
+  for (let row = 0; row < rows; row += 1) {
+    for (let column = 0; column < columns; column += 1) {
+      const tileSouth = s + row * latStep
+      const tileNorth = row === rows - 1 ? n : s + (row + 1) * latStep
+      const tileWest = w + column * lonStep
+      const tileEast = column === columns - 1 ? e : w + (column + 1) * lonStep
+      tiles.push([tileSouth, tileWest, tileNorth, tileEast])
+    }
+  }
+
+  return tiles
+}
+
+function endpointLabel(url: string) {
+  try {
+    return new URL(url).host
+  } catch {
+    return url
+  }
+}
+
+async function overpass(query: string, label: string): Promise<OverpassResponse> {
+  const errors: string[] = []
+
+  for (const endpoint of endpoints) {
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
+      try {
+        console.log(`[ivila spatial import] ${label}: ${endpointLabel(endpoint)} attempt ${attempt}`)
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+            'User-Agent': 'ivila-estate-spatial-import/0.3 (one-time GIS bootstrap)',
+          },
+          body: new URLSearchParams({ data: query }),
+          signal: AbortSignal.timeout(75_000),
+        })
+
+        if (response.ok) {
+          const json = await response.json() as OverpassResponse
+          return json
+        }
+
+        const status = response.status
+        errors.push(`${endpointLabel(endpoint)}:${status}`)
+
+        if (status === 429) {
+          console.warn(`[ivila spatial import] ${label}: rate limited by ${endpointLabel(endpoint)}; waiting 30s`)
+          await sleep(30_000)
+          continue
+        }
+
+        if ([502, 503, 504].includes(status)) {
+          console.warn(`[ivila spatial import] ${label}: transient HTTP ${status} from ${endpointLabel(endpoint)}`)
+          await sleep(attempt * 2_000)
+          continue
+        }
+
+        // Non-transient HTTP error: try the next endpoint rather than retrying it.
+        break
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        errors.push(`${endpointLabel(endpoint)}:${message}`)
+        console.warn(`[ivila spatial import] ${label}: request failed on ${endpointLabel(endpoint)} (${message})`)
+        await sleep(attempt * 2_000)
+      }
+    }
+  }
+
+  throw new Error(`OVERPASS_ALL_ENDPOINTS_FAILED ${label} [${errors.join(', ')}]`)
+}
+
+function dedupeFeatures(features: SpatialFeature[]) {
+  const map = new Map<string, SpatialFeature>()
+  for (const feature of features) {
+    map.set(`${feature.kind}:${feature.sourceId}`, feature)
+  }
+  return [...map.values()]
+}
+
+async function downloadCoastline(fullBox: BBox) {
+  const full = bboxString(fullBox)
+  const query = `[out:json][timeout:45];way["natural"="coastline"](${full});out geom;`
+
+  try {
+    const response = await overpass(query, 'coastline/full')
+    return parseCoastline(response.elements || [])
+  } catch (error) {
+    console.warn('[ivila spatial import] coastline full query failed; switching to tiled coastline queries')
+    console.warn(error)
+  }
+
+  const tiles = splitBBox(fullBox, 1, 4)
+  const all: SpatialFeature[] = []
+  for (let index = 0; index < tiles.length; index += 1) {
+    const tile = bboxString(tiles[index])
+    const tileQuery = `[out:json][timeout:45];way["natural"="coastline"](${tile});out geom;`
+    const response = await overpass(tileQuery, `coastline/${index + 1}/${tiles.length}`)
+    all.push(...parseCoastline(response.elements || []))
+    await sleep(250)
+  }
+  return dedupeFeatures(all)
+}
+
+async function downloadForest(fullBox: BBox) {
+  // Forest polygons/relations are much heavier than coastline ways. Splitting the
+  // ~Royan regional bbox prevents one expensive public Overpass request from
+  // becoming a gateway timeout and keeps each request regional/small.
+  const tiles = splitBBox(fullBox, 2, 4)
+  const all: SpatialFeature[] = []
+
+  for (let index = 0; index < tiles.length; index += 1) {
+    const tile = bboxString(tiles[index])
+    const query = `[out:json][timeout:60];(way["natural"="wood"](${tile});way["landuse"="forest"](${tile});relation["natural"="wood"](${tile});relation["landuse"="forest"](${tile}););out body geom;`
+    const response = await overpass(query, `forest/${index + 1}/${tiles.length}`)
+    all.push(...parseForest(response.elements || []))
+    await sleep(350)
+  }
+
+  return dedupeFeatures(all)
+}
 
 try {
   console.log(`[ivila spatial import] downloading OSM layers for bbox ${bbox}`)
-  const [coastResponse, forestResponse] = await Promise.all([
-    overpass(coastQuery),
-    overpass(forestQuery),
-  ])
+  console.log(`[ivila spatial import] Overpass failover: ${endpoints.map(endpointLabel).join(' -> ')}`)
 
-  const features = [
-    ...parseCoastline(coastResponse.elements || []),
-    ...parseForest(forestResponse.elements || []),
-  ]
+  // Keep the two layers sequential. Public Overpass instances are shared
+  // resources; parallel large regional queries make timeouts more likely.
+  const coastFeatures = dedupeFeatures(await downloadCoastline([south, west, north, east]))
+  const forestFeatures = dedupeFeatures(await downloadForest([south, west, north, east]))
+  const features = [...coastFeatures, ...forestFeatures]
 
-  const coastCount = features.filter(feature => feature.kind === 'coastline').length
-  const forestCount = features.filter(feature => feature.kind === 'forest').length
+  const coastCount = coastFeatures.length
+  const forestCount = forestFeatures.length
   if (!coastCount || !forestCount) {
     throw new Error(`REFERENCE_DATA_INCOMPLETE coastline=${coastCount} forest=${forestCount}`)
   }
+
+  console.log(`[ivila spatial import] downloaded reference data: coastline=${coastCount}, forest=${forestCount}`)
 
   const [{ getPayload }, configModule, spatialModule] = await Promise.all([
     import('payload'),
