@@ -1,3 +1,4 @@
+import { computeEnvironmentalDistances } from '@/lib/spatial-distance'
 import type { CollectionConfig } from 'payload'
 
 function slugifyCode(code?: string) {
@@ -30,9 +31,33 @@ export const Properties: CollectionConfig = {
     delete: ({ req }) => Boolean(req.user),
   },
   hooks: {
+    beforeChange: [
+      async ({ data, originalDoc, req }) => {
+        const coordinates = data?.coordinates ?? originalDoc?.coordinates
+        if (Array.isArray(coordinates) && coordinates.length === 2) {
+          const longitude = Number(coordinates[0])
+          const latitude = Number(coordinates[1])
+          if (Number.isFinite(longitude) && Number.isFinite(latitude)) {
+            try {
+              const distances = await computeEnvironmentalDistances(req.payload, longitude, latitude)
+              if (distances.seaDistanceM !== null) data.seaDistanceM = distances.seaDistanceM
+              if (distances.forestDistanceM !== null) data.forestDistanceM = distances.forestDistanceM
+            } catch (error) {
+              req.payload.logger.warn({ err: error }, 'ivila: environmental distance calculation failed')
+            }
+          }
+        }
+        return data
+      },
+    ],
     beforeValidate: [
       ({ data }) => {
         if (data?.code) data.slug = slugifyCode(data.code)
+        // Environmental distances are backend-derived; never trust manual API values.
+        if (data) {
+          delete data.seaDistanceM
+          delete data.forestDistanceM
+        }
         return data
       },
     ],
@@ -232,7 +257,7 @@ export const Properties: CollectionConfig = {
                   label: 'فاصله تا دریا (متر)',
                   min: 0,
                   index: true,
-                  admin: { width: '50%' },
+                  admin: { width: '50%', readOnly: true, description: 'خودکار از روی موقعیت ملک و لایه ساحلی PostGIS محاسبه می‌شود.' },
                 },
                 {
                   name: 'forestDistanceM',
@@ -240,7 +265,7 @@ export const Properties: CollectionConfig = {
                   label: 'فاصله تا جنگل (متر)',
                   min: 0,
                   index: true,
-                  admin: { width: '50%' },
+                  admin: { width: '50%', readOnly: true, description: 'خودکار از روی موقعیت ملک و محدوده‌های جنگلی PostGIS محاسبه می‌شود.' },
                 },
               ],
             },

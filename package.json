@@ -6,7 +6,7 @@
   "scripts": {
     "predev": "node ./scripts/copy-maplibre-worker.mjs",
     "dev": "next dev",
-    "prebuild": "node ./scripts/copy-maplibre-worker.mjs && npm run bootstrap:db",
+    "prebuild": "node ./scripts/copy-maplibre-worker.mjs && npm run bootstrap:db && npm run spatial:import",
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
@@ -16,7 +16,8 @@
     "migrate:create": "payload migrate:create",
     "migrate": "payload migrate",
     "seed": "tsx ./scripts/seed-payload.ts",
-    "bootstrap:db": "tsx ./scripts/bootstrap-payload-db.ts"
+    "bootstrap:db": "tsx ./scripts/bootstrap-payload-db.ts",
+    "spatial:import": "tsx ./scripts/import-spatial-osm.ts"
   },
   "dependencies": {
     "@fontsource-variable/vazirmatn": "^5.3.0",

@@ -7,6 +7,8 @@ import {
   LocateFixed,
   MapPin,
   Save,
+  Trees,
+  Waves,
 } from 'lucide-react'
 import { FormEvent, useEffect, useRef, useState } from 'react'
 import styles from './IvilaAdmin.module.css'
@@ -27,6 +29,7 @@ export default function IvilaPropertyForm() {
   const mapContainer = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<any>(null)
   const markerRef = useRef<any>(null)
+  const distanceRequestRef = useRef(0)
 
   const [code, setCode] = useState('IV-')
   const [title, setTitle] = useState('')
@@ -39,8 +42,9 @@ export default function IvilaPropertyForm() {
   const [locationText, setLocationText] = useState('')
   const [longitude, setLongitude] = useState<number | null>(null)
   const [latitude, setLatitude] = useState<number | null>(null)
-  const [seaDistance, setSeaDistance] = useState('')
-  const [forestDistance, setForestDistance] = useState('')
+  const [seaDistance, setSeaDistance] = useState<number | null>(null)
+  const [forestDistance, setForestDistance] = useState<number | null>(null)
+  const [distanceStatus, setDistanceStatus] = useState<'idle' | 'loading' | 'ready' | 'missing' | 'error'>('idle')
   const [salePrice, setSalePrice] = useState('')
   const [deposit, setDeposit] = useState('')
   const [monthlyRent, setMonthlyRent] = useState('')
@@ -49,6 +53,44 @@ export default function IvilaPropertyForm() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
+
+
+  function formatDistance(value: number | null) {
+    if (value === null) return '—'
+    if (value < 1000) return `${value.toLocaleString('fa-IR')} متر`
+    return `${(value / 1000).toLocaleString('fa-IR', { maximumFractionDigits: 1 })} کیلومتر`
+  }
+
+  async function calculateEnvironmentalDistances(lng: number, lat: number) {
+    const requestId = ++distanceRequestRef.current
+    setDistanceStatus('loading')
+    setSeaDistance(null)
+    setForestDistance(null)
+
+    try {
+      const response = await fetch(`/api/spatial/distances?lng=${encodeURIComponent(lng)}&lat=${encodeURIComponent(lat)}`, {
+        cache: 'no-store',
+        credentials: 'include',
+      })
+      const result = await response.json().catch(() => null) as null | {
+        ready?: boolean
+        seaDistanceM?: number | null
+        forestDistanceM?: number | null
+      }
+
+      if (requestId !== distanceRequestRef.current) return
+      if (!response.ok) {
+        setDistanceStatus('error')
+        return
+      }
+
+      setSeaDistance(typeof result?.seaDistanceM === 'number' ? result.seaDistanceM : null)
+      setForestDistance(typeof result?.forestDistanceM === 'number' ? result.forestDistanceM : null)
+      setDistanceStatus(result?.ready ? 'ready' : 'missing')
+    } catch {
+      if (requestId === distanceRequestRef.current) setDistanceStatus('error')
+    }
+  }
 
   useEffect(() => {
     let disposed = false
@@ -81,6 +123,7 @@ export default function IvilaPropertyForm() {
         const lat = Number(event.lngLat.lat.toFixed(6))
         setLongitude(lng)
         setLatitude(lat)
+        void calculateEnvironmentalDistances(lng, lat)
 
         if (markerRef.current) markerRef.current.remove()
         markerRef.current = new maplibregl.Marker({ color: '#087c70' })
@@ -130,8 +173,6 @@ export default function IvilaPropertyForm() {
         description: description.trim(),
         locationText: locationText.trim(),
         coordinates: [longitude, latitude],
-        seaDistanceM: numeric(seaDistance),
-        forestDistanceM: numeric(forestDistance),
         salePriceToman: deal === 'sale' ? numeric(salePrice) : undefined,
         depositToman: deal === 'rent' ? numeric(deposit) : undefined,
         monthlyRentToman: deal === 'rent' ? numeric(monthlyRent) : undefined,
@@ -228,10 +269,30 @@ export default function IvilaPropertyForm() {
               <button type="button" className={styles.mapLocate} onClick={locateRoyan}><LocateFixed size={17} /> رویان</button>
               <div className={styles.mapCoordinate}><MapPin size={15} /> {longitude === null ? 'هنوز نقطه‌ای انتخاب نشده' : `${latitude}, ${longitude}`}</div>
             </div>
-            <div className={styles.fieldsGrid}>
-              <label className={styles.field}><span>فاصله تا دریا (متر)</span><input inputMode="numeric" value={seaDistance} onChange={(e) => setSeaDistance(e.target.value)} /></label>
-              <label className={styles.field}><span>فاصله تا جنگل (متر)</span><input inputMode="numeric" value={forestDistance} onChange={(e) => setForestDistance(e.target.value)} /></label>
+            <div className={styles.autoDistanceGrid}>
+              <div className={`${styles.autoDistanceCard} ${styles.seaDistanceCard}`}>
+                <span className={styles.autoDistanceIcon}><Waves size={19} /></span>
+                <div>
+                  <small>فاصله تا دریا</small>
+                  <strong>{distanceStatus === 'loading' ? 'در حال محاسبه…' : formatDistance(seaDistance)}</strong>
+                  <em>محاسبه خودکار از نزدیک‌ترین خط ساحلی</em>
+                </div>
+              </div>
+              <div className={`${styles.autoDistanceCard} ${styles.forestDistanceCard}`}>
+                <span className={styles.autoDistanceIcon}><Trees size={19} /></span>
+                <div>
+                  <small>فاصله تا جنگل</small>
+                  <strong>{distanceStatus === 'loading' ? 'در حال محاسبه…' : formatDistance(forestDistance)}</strong>
+                  <em>اگر نقطه داخل محدوده جنگل باشد: صفر متر</em>
+                </div>
+              </div>
             </div>
+            {distanceStatus === 'missing' && (
+              <div className={styles.spatialNotice}>لایه‌های GIS هنوز داخل Neon بارگذاری نشده‌اند. فایل را می‌توانی ذخیره کنی؛ بعد از Import لایه‌های ساحل/جنگل، فاصله‌ها خودکار محاسبه می‌شوند.</div>
+            )}
+            {distanceStatus === 'error' && (
+              <div className={styles.spatialWarning}>محاسبه فاصله موقتاً انجام نشد؛ ذخیره فایل متوقف نمی‌شود و Backend هنگام ذخیره دوباره تلاش می‌کند.</div>
+            )}
           </section>
 
           <section className={`${styles.formCard} ${styles.fullCard}`}>
