@@ -1,10 +1,15 @@
 'use client'
 
-import { FormEvent, useMemo, useState } from 'react'
+import { FormEvent, useEffect, useMemo, useState } from 'react'
 import styles from './AdminAuthForm.module.css'
 
-type Props = {
-  hasUsers: boolean
+type Mode = 'login' | 'create'
+
+type Health = {
+  ok: boolean
+  code?: string
+  hasUsers?: boolean
+  message?: string
 }
 
 function getErrorMessage(payload: any, fallback: string) {
@@ -16,22 +21,58 @@ function getErrorMessage(payload: any, fallback: string) {
   return fallback
 }
 
-export default function AdminAuthForm({ hasUsers }: Props) {
-  const mode = hasUsers ? 'login' : 'create'
+export default function AdminAuthForm() {
+  const [mode, setMode] = useState<Mode>('login')
+  const [health, setHealth] = useState<Health | null>(null)
+  const [healthLoading, setHealthLoading] = useState(true)
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
+  useEffect(() => {
+    let alive = true
+
+    fetch('/api/ivila-admin-health', { cache: 'no-store' })
+      .then(async response => {
+        const data = (await response.json()) as Health
+        if (!alive) return
+        setHealth(data)
+        if (data.ok && data.hasUsers === false) setMode('create')
+      })
+      .catch(() => {
+        if (!alive) return
+        setHealth({
+          ok: false,
+          code: 'HEALTH_REQUEST_FAILED',
+          message: 'بررسی وضعیت Backend انجام نشد. لاگ Vercel را بررسی کن.',
+        })
+      })
+      .finally(() => {
+        if (alive) setHealthLoading(false)
+      })
+
+    return () => {
+      alive = false
+    }
+  }, [])
+
   const title = useMemo(
     () => (mode === 'create' ? 'ساخت اولین مدیر ivila' : 'ورود به مدیریت ivila'),
     [mode],
   )
 
+  const backendReady = health?.ok === true
+
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (busy) return
+
+    if (!backendReady) {
+      setError(health?.message || 'Backend مدیریت هنوز آماده نیست.')
+      return
+    }
 
     setError('')
     setBusy(true)
@@ -43,9 +84,7 @@ export default function AdminAuthForm({ hasUsers }: Props) {
       const response = await fetch(endpoint, {
         method: 'POST',
         credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       })
 
@@ -53,7 +92,7 @@ export default function AdminAuthForm({ hasUsers }: Props) {
       try {
         result = await response.json()
       } catch {
-        // Payload may return a response without JSON in an unexpected failure path.
+        // Keep a readable fallback below for non-JSON server failures.
       }
 
       if (!response.ok) {
@@ -68,8 +107,6 @@ export default function AdminAuthForm({ hasUsers }: Props) {
         return
       }
 
-      // Payload sets its own HTTP-only auth cookie. A full navigation makes the
-      // authenticated /admin tree render from a clean request.
       window.location.assign('/admin')
     } catch {
       setError('ارتباط با سرور برقرار نشد. دوباره تلاش کن.')
@@ -85,9 +122,7 @@ export default function AdminAuthForm({ hasUsers }: Props) {
           <div className={styles.brand}>ivila</div>
           <p className={styles.brandEyebrow}>ROYAN REAL ESTATE</p>
           <h1>مدیریت فایل‌های ملکی، سریع و نقشه‌محور.</h1>
-          <p>
-            پنل مدیریت فایل‌های ساحلی، جنگلی و روستایی ivila متصل به دیتابیس واقعی.
-          </p>
+          <p>پنل مدیریت فایل‌های ساحلی، جنگلی و روستایی ivila متصل به دیتابیس واقعی.</p>
           <div className={styles.brandGlowOne} />
           <div className={styles.brandGlowTwo} />
         </aside>
@@ -99,10 +134,27 @@ export default function AdminAuthForm({ hasUsers }: Props) {
             <h2>{title}</h2>
             <p>
               {mode === 'create'
-                ? 'این حساب، مدیر اصلی پنل خواهد بود. بعد از ساخت، مستقیماً وارد داشبورد می‌شوی.'
+                ? 'این حساب، مدیر اصلی پنل خواهد بود.'
                 : 'برای ثبت، ویرایش و مدیریت فایل‌های املاک وارد حساب مدیر شو.'}
             </p>
           </div>
+
+          {healthLoading && (
+            <div className={styles.status}>در حال بررسی اتصال Neon و Payload...</div>
+          )}
+
+          {!healthLoading && health && !health.ok && (
+            <div className={styles.error}>
+              <strong>Backend هنوز آماده نیست.</strong>
+              <div>{health.message}</div>
+              {health.code === 'DB_SCHEMA_MISSING' && (
+                <div style={{ marginTop: 8 }}>
+                  یک‌بار پروژه را در حالت development با DATABASE_URL همین Neon اجرا کن تا Push اولیه Payload جدول‌ها را بسازد.
+                </div>
+              )}
+              <div style={{ marginTop: 6, opacity: 0.75, direction: 'ltr' }}>Code: {health.code}</div>
+            </div>
+          )}
 
           <form className={styles.form} onSubmit={onSubmit}>
             {mode === 'create' && (
@@ -111,7 +163,7 @@ export default function AdminAuthForm({ hasUsers }: Props) {
                 <input
                   autoComplete="name"
                   value={name}
-                  onChange={(event) => setName(event.target.value)}
+                  onChange={event => setName(event.target.value)}
                   placeholder="مثلاً مدیر ivila"
                 />
               </label>
@@ -124,7 +176,7 @@ export default function AdminAuthForm({ hasUsers }: Props) {
                 type="email"
                 autoComplete="email"
                 value={email}
-                onChange={(event) => setEmail(event.target.value)}
+                onChange={event => setEmail(event.target.value)}
                 placeholder="admin@example.com"
                 dir="ltr"
               />
@@ -138,7 +190,7 @@ export default function AdminAuthForm({ hasUsers }: Props) {
                 type="password"
                 autoComplete={mode === 'create' ? 'new-password' : 'current-password'}
                 value={password}
-                onChange={(event) => setPassword(event.target.value)}
+                onChange={event => setPassword(event.target.value)}
                 placeholder="حداقل ۸ کاراکتر"
                 dir="ltr"
               />
@@ -146,18 +198,32 @@ export default function AdminAuthForm({ hasUsers }: Props) {
 
             {error && <div className={styles.error}>{error}</div>}
 
-            <button className={styles.submit} type="submit" disabled={busy}>
-              {busy
-                ? 'در حال انجام...'
-                : mode === 'create'
-                  ? 'ساخت مدیر و ورود'
-                  : 'ورود به پنل'}
+            <button className={styles.submit} type="submit" disabled={busy || !backendReady}>
+              {busy ? 'در حال انجام...' : mode === 'create' ? 'ساخت مدیر و ورود' : 'ورود به پنل'}
             </button>
           </form>
 
-          <a className={styles.back} href="/">
-            بازگشت به سایت
-          </a>
+          {backendReady && (
+            <button
+              type="button"
+              onClick={() => {
+                setError('')
+                setMode(current => (current === 'login' ? 'create' : 'login'))
+              }}
+              style={{
+                border: 0,
+                background: 'transparent',
+                font: 'inherit',
+                cursor: 'pointer',
+                color: '#315f55',
+                marginTop: 14,
+              }}
+            >
+              {mode === 'login' ? 'اولین راه‌اندازی است؟ ساخت مدیر' : 'قبلاً مدیر ساخته‌ای؟ ورود'}
+            </button>
+          )}
+
+          <a className={styles.back} href="/">بازگشت به سایت</a>
         </div>
       </section>
     </main>
