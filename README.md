@@ -1,69 +1,45 @@
-# Royan Estate — Phase 1 Demo
+# ivila — Real Estate Map Platform
 
-دموی رابط کاربری سامانه املاک نقشه‌محور برای رویان و اطراف، با تمرکز روی املاک ساحلی، جنگلی، روستایی و شهری.
+سامانه املاک نقشه‌محور برای رویان، نور و محدوده‌های ساحلی/جنگلی اطراف.
 
-## قابلیت‌های این فاز
+## Stack
 
-- صفحه Home اختصاصی و Responsive با طراحی RTL
-- دسته‌بندی بر اساس سبک منطقه: ساحلی، جنگلی، روستایی، شهری
-- فیلتر نوع ملک
-- MapLibre GL JS با مرکز رویان
-- Marker قیمت ملک‌ها
-- Polygonهای نمایشی ساحلی/جنگلی
-- رسم محدوده دلخواه توسط کاربر و فیلتر فایل‌های داخل Polygon
-- صفحه جزئیات ملک
-- ساختار TypeScript آماده اتصال به API و PostGIS
+- Next.js + React + TypeScript
+- MapLibre GL
+- Payload CMS
+- Neon PostgreSQL
+- PostGIS
+- Vercel deployment
+- Vercel Blob (اختیاری/پیشنهادی برای تصاویر)
 
-> Polygonهای پیش‌فرض دمو مرز قانونی/ثبتی نیستند و فقط برای نمایش UX ساخته شده‌اند.
+## Phase 2
 
-## اجرا
+در این فاز Frontend تأییدشده به Backend واقعی متصل شده است:
+
+- `/admin` برای مدیریت فایل‌ها
+- داده‌های منتشرشده از Neon خوانده می‌شوند
+- موقعیت هر فایل به‌صورت Point ذخیره می‌شود
+- سایت تا قبل از Seed شدن دیتابیس، فایل‌های Demo را fallback نمایش می‌دهد
+
+راهنمای راه‌اندازی دقیق:
+
+```text
+PHASE2-NEON-SETUP.md
+```
+
+## Development
 
 ```bash
 npm install
 npm run dev
 ```
 
-سپس:
+## Admin
 
 ```text
-http://localhost:3000
+http://localhost:3000/admin
 ```
 
-## Deploy روی Vercel
+## Important
 
-1. پروژه را در GitHub قرار دهید.
-2. در Vercel گزینه **New Project** را بزنید.
-3. Repository را Import کنید.
-4. Framework به صورت خودکار Next.js تشخیص داده می‌شود.
-5. Deploy را بزنید.
-
-برای نسخه دمو، در صورت خالی بودن `NEXT_PUBLIC_MAP_STYLE_URL` از Raster Tile عمومی OpenStreetMap استفاده می‌شود. برای نسخه Production بهتر است یک Map Style تجاری/اختصاصی یا Tile Server خودمان تعریف شود.
-
-## اتصال فاز بعد به PostGIS
-
-مدل پیشنهادی حداقلی:
-
-```sql
-CREATE EXTENSION IF NOT EXISTS postgis;
-
-CREATE TABLE properties (
-  id bigserial PRIMARY KEY,
-  title text NOT NULL,
-  location geography(Point, 4326) NOT NULL
-);
-
-CREATE INDEX properties_location_gix
-  ON properties USING GIST (location);
-
-CREATE TABLE areas (
-  id bigserial PRIMARY KEY,
-  name text NOT NULL,
-  kind text NOT NULL,
-  boundary geography(Polygon, 4326) NOT NULL
-);
-
-CREATE INDEX areas_boundary_gix
-  ON areas USING GIST (boundary);
-```
-
-جستجوی ملک داخل Polygon رسم‌شده کاربر بعداً در API با `ST_Intersects` / `ST_Within` انجام می‌شود و UI همین ساختار را حفظ می‌کند.
+Polygonهای نمایشی فعلی UI مرز ثبتی/قانونی نیستند. در Production مرز روستاها، نوار ساحلی، جنگل و محدوده‌های فروش باید از لایه‌های GIS واقعی یا محدوده‌های تأییدشده‌ی خود آژانس وارد PostGIS شوند.

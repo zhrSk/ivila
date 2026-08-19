@@ -13,7 +13,7 @@ import {
   Waves,
   X
 } from 'lucide-react'
-import { properties, lifestyleLabels, type DocumentStatus, type Lifestyle } from '@/lib/data'
+import { lifestyleLabels, type DocumentStatus, type Lifestyle, type Property } from '@/lib/data'
 import MapExplorer from './MapExplorer'
 import PropertyCard from './PropertyCard'
 import FilterSelect from './FilterSelect'
@@ -48,7 +48,7 @@ function normalizeSearchText(value: string) {
     .replace(/\s+/g, ' ')
 }
 
-function propertyMatchesQuery(property: (typeof properties)[number], rawQuery: string) {
+function propertyMatchesQuery(property: Property, rawQuery: string) {
   const query = normalizeSearchText(rawQuery)
   if (!query) return true
   const haystack = normalizeSearchText([
@@ -63,7 +63,7 @@ function propertyMatchesQuery(property: (typeof properties)[number], rawQuery: s
   return query.split(' ').filter(Boolean).every(token => haystack.includes(token))
 }
 
-export default function SearchExperience() {
+export default function SearchExperience({ properties }: { properties: Property[] }) {
   const [lifestyle, setLifestyle] = useState<Lifestyle>('all')
   const [areaIds, setAreaIds] = useState<string[] | null>(null)
   const [type, setType] = useState<'همه' | 'ویلا' | 'زمین' | 'آپارتمان'>('همه')

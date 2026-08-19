@@ -19,6 +19,7 @@ export type Property = {
   lat: number
   lng: number
   image: string
+  images?: string[]
   badges: string[]
   featured?: boolean
   description: string

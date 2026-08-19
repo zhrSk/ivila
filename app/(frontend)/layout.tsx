@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import '@fontsource-variable/vazirmatn/wght.css'
-import './globals.css'
+import '../globals.css'
 import 'maplibre-gl/dist/maplibre-gl.css'
 
 export const metadata: Metadata = {

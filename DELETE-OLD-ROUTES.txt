@@ -1,0 +1,13 @@
+برای نصب Payload، Frontend به Route Group منتقل شده است.
+بعد از Extract این Patch داخل ریشه پروژه، این مسیرهای قدیمی را حذف کن تا Route تکراری نداشته باشی:
+
+app/layout.tsx
+app/page.tsx
+app/properties/   (کل فولدر قدیمی)
+
+نسخه جدید همان Routeها اینجاست:
+app/(frontend)/layout.tsx
+app/(frontend)/page.tsx
+app/(frontend)/properties/[id]/page.tsx
+
+این جابه‌جایی URL سایت را عوض نمی‌کند؛ فقط Layout سایت را از Layout پنل Payload جدا می‌کند.

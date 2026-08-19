@@ -1,0 +1,25 @@
+:root {
+  --font-body: 'Vazirmatn Variable', Vazirmatn, system-ui, sans-serif;
+  --font-mono: 'Vazirmatn Variable', Vazirmatn, monospace;
+}
+
+html,
+body,
+.payload-root,
+.payload-root button,
+.payload-root input,
+.payload-root textarea,
+.payload-root select {
+  font-family: 'Vazirmatn Variable', Vazirmatn, system-ui, sans-serif;
+}
+
+html[lang='fa'],
+.payload-root {
+  direction: rtl;
+}
+
+.payload-root input,
+.payload-root textarea,
+.payload-root [contenteditable='true'] {
+  text-align: right;
+}

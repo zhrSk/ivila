@@ -17,31 +17,19 @@ import SiteHeader from '@/components/SiteHeader'
 import Footer from '@/components/Footer'
 import PropertyCard from '@/components/PropertyCard'
 import PropertyLocationMap from '@/components/PropertyLocationMap'
-import { properties } from '@/lib/data'
+import { getPublicProperty, getSimilarProperties } from '@/lib/property-repository'
 
-function geoDistanceScore(a: { lat: number; lng: number }, b: { lat: number; lng: number }) {
-  const lat = a.lat - b.lat
-  const lng = a.lng - b.lng
-  return (lat * lat) + (lng * lng)
-}
+export const dynamic = 'force-dynamic'
 
 export default async function PropertyPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const property = properties.find(p => p.id === id)
+  const property = await getPublicProperty(id)
   if (!property) notFound()
 
   const EnvironmentIcon = property.lifestyle === 'coast' ? Waves : property.lifestyle === 'forest' ? Trees : Building2
-  const similar = properties
-    .filter(item => item.id !== property.id)
-    .sort((a, b) => {
-      const lifestyleA = a.lifestyle === property.lifestyle ? -1 : 0
-      const lifestyleB = b.lifestyle === property.lifestyle ? -1 : 0
-      if (lifestyleA !== lifestyleB) return lifestyleA - lifestyleB
-      return geoDistanceScore(a, property) - geoDistanceScore(b, property)
-    })
-    .slice(0, 3)
-
-  const galleryFallback = ['/images/villa-04.jpg', '/images/villa-06.jpg']
+  const similar = await getSimilarProperties(property, 3)
+  const gallery = property.images?.length ? property.images : [property.image]
+  const sideImages = [gallery[1] || '/images/villa-04.jpg', gallery[2] || '/images/villa-06.jpg']
 
   return (
     <main className="detail-page">
@@ -53,12 +41,12 @@ export default async function PropertyPage({ params }: { params: Promise<{ id: s
         </div>
 
         <div className="detail-gallery">
-          <img src={property.image} alt={property.title}/>
+          <img src={gallery[0] || property.image} alt={property.title}/>
           <div className="detail-gallery-side">
-            <div className="gallery-tile"><img src={galleryFallback[0]} alt="نمای تکمیلی ملک"/></div>
-            <div className="gallery-tile"><img src={galleryFallback[1]} alt="فضای تکمیلی ملک"/></div>
+            <div className="gallery-tile"><img src={sideImages[0]} alt="نمای تکمیلی ملک"/></div>
+            <div className="gallery-tile"><img src={sideImages[1]} alt="فضای تکمیلی ملک"/></div>
           </div>
-          <div className="gallery-counter">۳ تصویر</div>
+          <div className="gallery-counter">{Math.max(gallery.length, 1).toLocaleString('fa-IR')} تصویر</div>
         </div>
 
         <div className="detail-content-grid">
