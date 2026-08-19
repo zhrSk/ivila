@@ -3,14 +3,21 @@
 import {
   ArrowRight,
   Check,
+  ChevronLeft,
+  ChevronRight,
   FilePlus2,
+  GripVertical,
+  ImagePlus,
   LocateFixed,
   MapPin,
   Save,
+  Star,
   Trees,
+  UploadCloud,
   Waves,
+  X,
 } from 'lucide-react'
-import { FormEvent, useEffect, useRef, useState } from 'react'
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
 import styles from './IvilaAdmin.module.css'
 
 type Deal = 'sale' | 'rent'
@@ -18,6 +25,22 @@ type PropertyType = 'villa' | 'land' | 'apartment'
 type Lifestyle = 'coast' | 'forest' | 'village' | 'urban'
 type DocumentStatus = 'single-page' | 'council' | 'contract' | 'in-progress'
 type PublishStatus = 'draft' | 'published'
+type BlobStatus = 'loading' | 'ready' | 'missing' | 'error'
+type UploadState = 'ready' | 'uploading' | 'uploaded' | 'error'
+
+type ImageDraft = {
+  key: string
+  file: File
+  preview: string
+  originalName: string
+  uploadState: UploadState
+  mediaId?: string | number
+  error?: string
+}
+
+const MAX_IMAGES = 30
+const MAX_UPLOAD_BYTES = 3_800_000
+const SUPPORTED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp'])
 
 function numeric(value: string) {
   if (!value.trim()) return undefined
@@ -25,11 +48,86 @@ function numeric(value: string) {
   return Number.isFinite(number) ? number : undefined
 }
 
+function randomKey() {
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`
+}
+
+function baseName(filename: string) {
+  return filename.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9-_]+/g, '-').replace(/^-+|-+$/g, '') || 'property-image'
+}
+
+function formatBytes(bytes: number) {
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024)).toLocaleString('fa-IR')} کیلوبایت`
+  return `${(bytes / (1024 * 1024)).toLocaleString('fa-IR', { maximumFractionDigits: 1 })} مگابایت`
+}
+
+async function loadImage(file: File) {
+  const url = URL.createObjectURL(file)
+  try {
+    const image = new Image()
+    image.decoding = 'async'
+    image.src = url
+    await image.decode()
+    return image
+  } finally {
+    URL.revokeObjectURL(url)
+  }
+}
+
+async function canvasBlob(canvas: HTMLCanvasElement, quality: number) {
+  return new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) resolve(blob)
+      else reject(new Error('IMAGE_ENCODE_FAILED'))
+    }, 'image/webp', quality)
+  })
+}
+
+async function prepareImage(file: File): Promise<File> {
+  if (!SUPPORTED_TYPES.has(file.type)) throw new Error('فقط JPG، PNG و WebP پشتیبانی می‌شود.')
+
+  const image = await loadImage(file)
+  const maxSide = 2400
+  const scale = Math.min(1, maxSide / Math.max(image.naturalWidth, image.naturalHeight))
+  const width = Math.max(1, Math.round(image.naturalWidth * scale))
+  const height = Math.max(1, Math.round(image.naturalHeight * scale))
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const context = canvas.getContext('2d')
+  if (!context) throw new Error('پردازش تصویر در مرورگر انجام نشد.')
+  context.drawImage(image, 0, 0, width, height)
+
+  let blob = await canvasBlob(canvas, 0.86)
+  if (blob.size > MAX_UPLOAD_BYTES) blob = await canvasBlob(canvas, 0.74)
+
+  if (blob.size > MAX_UPLOAD_BYTES && Math.max(width, height) > 1900) {
+    const reducedScale = 1900 / Math.max(width, height)
+    const reduced = document.createElement('canvas')
+    reduced.width = Math.round(width * reducedScale)
+    reduced.height = Math.round(height * reducedScale)
+    const reducedContext = reduced.getContext('2d')
+    if (!reducedContext) throw new Error('پردازش تصویر در مرورگر انجام نشد.')
+    reducedContext.drawImage(canvas, 0, 0, reduced.width, reduced.height)
+    blob = await canvasBlob(reduced, 0.72)
+  }
+
+  if (blob.size > MAX_UPLOAD_BYTES) throw new Error('حجم این تصویر بعد از فشرده‌سازی هنوز زیاد است.')
+
+  return new File([blob], `${baseName(file.name)}.webp`, {
+    type: 'image/webp',
+    lastModified: Date.now(),
+  })
+}
+
 export default function IvilaPropertyForm() {
   const mapContainer = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<any>(null)
   const markerRef = useRef<any>(null)
   const distanceRequestRef = useRef(0)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const dragIndexRef = useRef<number | null>(null)
+  const imagesRef = useRef<ImageDraft[]>([])
 
   const [code, setCode] = useState('IV-')
   const [title, setTitle] = useState('')
@@ -53,7 +151,12 @@ export default function IvilaPropertyForm() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
+  const [images, setImages] = useState<ImageDraft[]>([])
+  const [addingImages, setAddingImages] = useState(false)
+  const [dropActive, setDropActive] = useState(false)
+  const [blobStatus, setBlobStatus] = useState<BlobStatus>('loading')
 
+  const uploadedCount = useMemo(() => images.filter((item) => item.uploadState === 'uploaded').length, [images])
 
   function formatDistance(value: number | null) {
     if (value === null) return '—'
@@ -94,6 +197,15 @@ export default function IvilaPropertyForm() {
 
   useEffect(() => {
     let disposed = false
+
+    fetch('/api/ivila-media-health', { cache: 'no-store', credentials: 'include' })
+      .then(async (response) => {
+        const result = await response.json().catch(() => null) as null | { ready?: boolean }
+        if (!disposed) setBlobStatus(response.ok && result?.ready ? 'ready' : 'missing')
+      })
+      .catch(() => {
+        if (!disposed) setBlobStatus('error')
+      })
 
     async function setupMap() {
       if (!mapContainer.current || mapRef.current) return
@@ -143,8 +255,135 @@ export default function IvilaPropertyForm() {
     }
   }, [])
 
+  useEffect(() => {
+    imagesRef.current = images
+  }, [images])
+
+  useEffect(() => {
+    return () => {
+      imagesRef.current.forEach((item) => URL.revokeObjectURL(item.preview))
+    }
+  }, [])
+
   function locateRoyan() {
     mapRef.current?.flyTo?.({ center: [51.9607, 36.5665], zoom: 12, essential: true })
+  }
+
+  async function addFiles(fileList: FileList | File[]) {
+    if (blobStatus !== 'ready') {
+      setError('برای آپلود عکس، Vercel Blob باید به پروژه متصل باشد.')
+      return
+    }
+
+    const incoming = Array.from(fileList).slice(0, Math.max(0, MAX_IMAGES - images.length))
+    if (!incoming.length) {
+      if (images.length >= MAX_IMAGES) setError(`حداکثر ${MAX_IMAGES.toLocaleString('fa-IR')} عکس برای هر فایل مجاز است.`)
+      return
+    }
+
+    setAddingImages(true)
+    setError('')
+
+    const prepared: ImageDraft[] = []
+    for (const file of incoming) {
+      try {
+        const optimized = await prepareImage(file)
+        prepared.push({
+          key: randomKey(),
+          file: optimized,
+          preview: URL.createObjectURL(optimized),
+          originalName: file.name,
+          uploadState: 'ready',
+        })
+      } catch (reason) {
+        const message = reason instanceof Error ? reason.message : 'تصویر قابل پردازش نیست.'
+        setError(`${file.name}: ${message}`)
+      }
+    }
+
+    if (prepared.length) setImages((current) => [...current, ...prepared].slice(0, MAX_IMAGES))
+    setAddingImages(false)
+  }
+
+  function removeImage(index: number) {
+    setImages((current) => {
+      const target = current[index]
+      if (target) URL.revokeObjectURL(target.preview)
+      return current.filter((_, itemIndex) => itemIndex !== index)
+    })
+  }
+
+  function moveImage(from: number, to: number) {
+    setImages((current) => {
+      if (from < 0 || to < 0 || from >= current.length || to >= current.length || from === to) return current
+      const next = [...current]
+      const [item] = next.splice(from, 1)
+      next.splice(to, 0, item)
+      return next
+    })
+  }
+
+  function setCover(index: number) {
+    moveImage(index, 0)
+  }
+
+  function handleDrop(event: React.DragEvent<HTMLDivElement>) {
+    event.preventDefault()
+    setDropActive(false)
+    if (event.dataTransfer.files?.length) void addFiles(event.dataTransfer.files)
+  }
+
+  async function uploadImage(item: ImageDraft, index: number) {
+    if (item.mediaId) return item.mediaId
+
+    setImages((current) => current.map((candidate) => candidate.key === item.key
+      ? { ...candidate, uploadState: 'uploading', error: undefined }
+      : candidate))
+
+    const formData = new FormData()
+    formData.append('file', item.file)
+    formData.append('_payload', JSON.stringify({
+      alt: title.trim() ? `${title.trim()} - تصویر ${index + 1}` : `${code.trim() || 'ivila'} - تصویر ${index + 1}`,
+    }))
+
+    const response = await fetch('/api/media', {
+      method: 'POST',
+      credentials: 'include',
+      body: formData,
+    })
+
+    const result = await response.json().catch(() => null) as any
+    if (response.status === 401) {
+      window.location.assign('/ivila-login')
+      throw new Error('AUTH_REQUIRED')
+    }
+    if (!response.ok) {
+      const message = response.status === 413
+        ? 'حجم تصویر بیش از حد مجاز Vercel است.'
+        : result?.errors?.[0]?.message || result?.message || 'آپلود تصویر انجام نشد.'
+      setImages((current) => current.map((candidate) => candidate.key === item.key
+        ? { ...candidate, uploadState: 'error', error: message }
+        : candidate))
+      throw new Error(message)
+    }
+
+    const mediaId = result?.doc?.id ?? result?.id
+    if (!mediaId) throw new Error('شناسه تصویر از Backend دریافت نشد.')
+
+    setImages((current) => current.map((candidate) => candidate.key === item.key
+      ? { ...candidate, uploadState: 'uploaded', mediaId }
+      : candidate))
+    return mediaId as string | number
+  }
+
+  async function cleanupUploadedMedia(ids: Array<string | number>) {
+    await Promise.allSettled(ids.map((id) => fetch(`/api/media/${encodeURIComponent(String(id))}`, {
+      method: 'DELETE',
+      credentials: 'include',
+    })))
+    setImages((current) => current.map((item) => ids.includes(item.mediaId as any)
+      ? { ...item, mediaId: undefined, uploadState: 'ready' }
+      : item))
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -156,11 +395,31 @@ export default function IvilaPropertyForm() {
       return
     }
 
+    if (status === 'published' && images.length === 0) {
+      setError('برای انتشار فایل حداقل یک عکس انتخاب کن. پیش‌نویس را می‌توان بدون عکس ذخیره کرد.')
+      return
+    }
+
+    if (images.length > 0 && blobStatus !== 'ready') {
+      setError('Vercel Blob آماده نیست و تصاویر قابل ذخیره دائمی نیستند.')
+      return
+    }
+
     setBusy(true)
     setError('')
     setSuccess(false)
+    const createdMediaIds: Array<string | number> = []
 
     try {
+      const mediaIds: Array<string | number> = []
+      for (let index = 0; index < images.length; index += 1) {
+        const item = images[index]
+        const existed = Boolean(item.mediaId)
+        const id = await uploadImage(item, index)
+        mediaIds.push(id)
+        if (!existed) createdMediaIds.push(id)
+      }
+
       const body = {
         code: code.trim(),
         title: title.trim(),
@@ -176,6 +435,7 @@ export default function IvilaPropertyForm() {
         salePriceToman: deal === 'sale' ? numeric(salePrice) : undefined,
         depositToman: deal === 'rent' ? numeric(deposit) : undefined,
         monthlyRentToman: deal === 'rent' ? numeric(monthlyRent) : undefined,
+        images: mediaIds,
         status,
         featured: false,
       }
@@ -191,11 +451,13 @@ export default function IvilaPropertyForm() {
       try { result = await response.json() } catch {}
 
       if (response.status === 401) {
+        if (createdMediaIds.length) await cleanupUploadedMedia(createdMediaIds)
         window.location.assign('/ivila-login')
         return
       }
 
       if (!response.ok) {
+        if (createdMediaIds.length) await cleanupUploadedMedia(createdMediaIds)
         const message = result?.errors?.[0]?.message || result?.message || 'ذخیره فایل انجام نشد.'
         setError(message)
         return
@@ -203,8 +465,10 @@ export default function IvilaPropertyForm() {
 
       setSuccess(true)
       setTimeout(() => window.location.assign('/admin'), 700)
-    } catch {
-      setError('ارتباط با Backend برقرار نشد. دوباره تلاش کن.')
+    } catch (reason) {
+      if (createdMediaIds.length) await cleanupUploadedMedia(createdMediaIds)
+      if (reason instanceof Error && reason.message === 'AUTH_REQUIRED') return
+      setError(reason instanceof Error ? reason.message : 'ارتباط با Backend برقرار نشد. دوباره تلاش کن.')
     } finally {
       setBusy(false)
     }
@@ -223,7 +487,7 @@ export default function IvilaPropertyForm() {
           <div>
             <span className={styles.eyebrow}>فایل جدید</span>
             <h1>ثبت ملک در ivila</h1>
-            <p>اطلاعات اصلی را وارد کن و محل دقیق ملک را با یک کلیک روی نقشه مشخص کن.</p>
+            <p>اطلاعات اصلی، تصاویر و محل دقیق ملک را در یک مرحله ثبت کن.</p>
           </div>
           <FilePlus2 size={42} />
         </section>
@@ -296,15 +560,103 @@ export default function IvilaPropertyForm() {
           </section>
 
           <section className={`${styles.formCard} ${styles.fullCard}`}>
-            <div className={styles.sectionTitle}><span>۴</span><div><h2>توضیحات</h2><p>نکته‌هایی که فروش فایل را راحت‌تر می‌کنند.</p></div></div>
+            <div className={styles.sectionTitle}><span>۴</span><div><h2>تصاویر ملک</h2><p>تصویر اول کاور سایت است؛ با Drag & Drop ترتیب را تغییر بده.</p></div></div>
+
+            <input
+              ref={fileInputRef}
+              className={styles.hiddenFileInput}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              multiple
+              onChange={(event) => {
+                if (event.target.files?.length) void addFiles(event.target.files)
+                event.currentTarget.value = ''
+              }}
+            />
+
+            <div
+              className={`${styles.imageDropzone} ${dropActive ? styles.imageDropzoneActive : ''} ${blobStatus !== 'ready' ? styles.imageDropzoneDisabled : ''}`}
+              onClick={() => blobStatus === 'ready' && fileInputRef.current?.click()}
+              onDragEnter={(event) => { event.preventDefault(); if (blobStatus === 'ready') setDropActive(true) }}
+              onDragOver={(event) => event.preventDefault()}
+              onDragLeave={() => setDropActive(false)}
+              onDrop={handleDrop}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(event) => {
+                if ((event.key === 'Enter' || event.key === ' ') && blobStatus === 'ready') fileInputRef.current?.click()
+              }}
+            >
+              <span className={styles.dropzoneIcon}>{addingImages ? <ImagePlus size={25} /> : <UploadCloud size={25} />}</span>
+              <div>
+                <strong>{addingImages ? 'در حال آماده‌سازی عکس‌ها…' : 'عکس‌ها را اینجا رها کن'}</strong>
+                <p>یا کلیک کن و چند عکس را یکجا انتخاب کن. عکس‌ها قبل از ارسال خودکار WebP و کم‌حجم می‌شوند.</p>
+              </div>
+              <span className={styles.dropzoneMeta}>{images.length.toLocaleString('fa-IR')} / {MAX_IMAGES.toLocaleString('fa-IR')}</span>
+            </div>
+
+            {blobStatus === 'loading' && <div className={styles.mediaInfo}>در حال بررسی اتصال Vercel Blob…</div>}
+            {blobStatus === 'missing' && <div className={styles.mediaWarning}>Vercel Blob هنوز به پروژه متصل نیست. عکس‌ها را فعلاً انتخاب نکن؛ بعد از اتصال Blob این بخش آماده می‌شود.</div>}
+            {blobStatus === 'error' && <div className={styles.mediaWarning}>وضعیت Vercel Blob دریافت نشد. یک‌بار صفحه را Refresh کن.</div>}
+
+            {images.length > 0 && (
+              <>
+                <div className={styles.gallerySummary}>
+                  <span><ImagePlus size={16} /> {images.length.toLocaleString('fa-IR')} تصویر آماده</span>
+                  {busy && <span>{uploadedCount.toLocaleString('fa-IR')} تصویر آپلود شده</span>}
+                  <small>برای تعیین کاور، روی «کاور» عکس دلخواه بزن.</small>
+                </div>
+                <div className={styles.adminGallery}>
+                  {images.map((item, index) => (
+                    <article
+                      key={item.key}
+                      className={`${styles.adminGalleryItem} ${index === 0 ? styles.adminGalleryCover : ''}`}
+                      draggable={!busy}
+                      onDragStart={() => { dragIndexRef.current = index }}
+                      onDragOver={(event) => event.preventDefault()}
+                      onDrop={(event) => {
+                        event.preventDefault()
+                        const from = dragIndexRef.current
+                        dragIndexRef.current = null
+                        if (from !== null) moveImage(from, index)
+                      }}
+                    >
+                      <img src={item.preview} alt={`پیش‌نمایش تصویر ${index + 1}`} />
+                      <div className={styles.galleryTopline}>
+                        <span className={styles.galleryDrag}><GripVertical size={17} /></span>
+                        {index === 0 && <span className={styles.coverBadge}><Star size={13} fill="currentColor" /> کاور</span>}
+                        <button type="button" className={styles.galleryRemove} onClick={() => removeImage(index)} disabled={busy} aria-label="حذف تصویر"><X size={16} /></button>
+                      </div>
+                      <div className={styles.galleryFooter}>
+                        <div>
+                          <strong>{index === 0 ? 'تصویر اصلی' : `تصویر ${index + 1}`}</strong>
+                          <span>{formatBytes(item.file.size)}</span>
+                        </div>
+                        <div className={styles.galleryActions}>
+                          {index > 0 && <button type="button" onClick={() => setCover(index)} disabled={busy}><Star size={13} /> کاور</button>}
+                          <button type="button" onClick={() => moveImage(index, index - 1)} disabled={busy || index === 0} aria-label="قبلی"><ChevronRight size={15} /></button>
+                          <button type="button" onClick={() => moveImage(index, index + 1)} disabled={busy || index === images.length - 1} aria-label="بعدی"><ChevronLeft size={15} /></button>
+                        </div>
+                      </div>
+                      {item.uploadState === 'uploading' && <div className={styles.galleryUploadState}>در حال ارسال به Blob…</div>}
+                      {item.uploadState === 'uploaded' && <div className={`${styles.galleryUploadState} ${styles.galleryUploadDone}`}><Check size={13} /> آپلود شد</div>}
+                      {item.uploadState === 'error' && <div className={`${styles.galleryUploadState} ${styles.galleryUploadError}`}>{item.error || 'خطای آپلود'}</div>}
+                    </article>
+                  ))}
+                </div>
+              </>
+            )}
+          </section>
+
+          <section className={`${styles.formCard} ${styles.fullCard}`}>
+            <div className={styles.sectionTitle}><span>۵</span><div><h2>توضیحات</h2><p>نکته‌هایی که فروش فایل را راحت‌تر می‌کنند.</p></div></div>
             <label className={styles.field}><span>توضیحات فایل</span><textarea required value={description} onChange={(e) => setDescription(e.target.value)} placeholder="ویژگی‌های مهم ملک، دسترسی، وضعیت بنا و..." rows={6} /></label>
-            <div className={styles.uploadNotice}>آپلود چندعکس را در مرحله بعد با Vercel Blob به همین فرم اضافه می‌کنیم؛ فایل بدون عکس هم فعلاً قابل ثبت است.</div>
           </section>
         </div>
 
         <div className={styles.stickySave}>
-          <div><strong>{code || 'فایل جدید'}</strong><span>{status === 'published' ? 'بعد از ذخیره در سایت دیده می‌شود' : 'به‌صورت پیش‌نویس ذخیره می‌شود'}</span></div>
-          <button type="submit" disabled={busy}><Save size={18} /> {busy ? 'در حال ذخیره...' : 'ذخیره فایل'}</button>
+          <div><strong>{code || 'فایل جدید'}</strong><span>{busy && images.length ? `در حال آپلود و ذخیره · ${uploadedCount.toLocaleString('fa-IR')} از ${images.length.toLocaleString('fa-IR')} عکس` : status === 'published' ? 'بعد از ذخیره در سایت دیده می‌شود' : 'به‌صورت پیش‌نویس ذخیره می‌شود'}</span></div>
+          <button type="submit" disabled={busy || addingImages}><Save size={18} /> {busy ? 'در حال ذخیره...' : addingImages ? 'در حال آماده‌سازی عکس...' : 'ذخیره فایل'}</button>
         </div>
       </form>
     </main>
