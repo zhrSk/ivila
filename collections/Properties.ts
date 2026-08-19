@@ -255,7 +255,7 @@ export const Properties: CollectionConfig = {
               label: 'تصاویر ملک',
               admin: {
                 isSortable: true,
-                appearance: 'drawer',
+                appearance: 'drawer' as const,
                 description: 'تصویر اول، کاور اصلی فایل است. تصاویر را می‌توانی Drag & Drop مرتب کنی.',
               },
             },
