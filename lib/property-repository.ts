@@ -37,6 +37,7 @@ type PropertyDocument = {
   seaDistanceM?: number | null
   forestDistanceM?: number | null
   images?: Array<string | number | MediaLike> | null
+  imageUrls?: string[] | null
   fallbackImage?: string | null
   badges?: string[] | null
   amenities?: string[] | null
@@ -87,12 +88,16 @@ function buildPrice(doc: PropertyDocument) {
 }
 
 function toFrontendProperty(doc: PropertyDocument): Property {
+  const directGallery = Array.isArray(doc.imageUrls)
+    ? doc.imageUrls.filter((url): url is string => typeof url === 'string' && /^https?:\/\//i.test(url))
+    : []
   const imageDocs = Array.isArray(doc.images) ? doc.images : []
-  const gallery = imageDocs
+  const legacyGallery = imageDocs
     .map(item => mediaURL(item, 'detail'))
     .filter((url): url is string => Boolean(url))
+  const gallery = directGallery.length ? directGallery : legacyGallery
 
-  const cardCover = imageDocs.length ? mediaURL(imageDocs[0], 'card') : null
+  const cardCover = directGallery[0] || (imageDocs.length ? mediaURL(imageDocs[0], 'card') : null)
   const fallback = doc.fallbackImage || '/images/villa-01.jpg'
   const coordinates = Array.isArray(doc.coordinates) ? doc.coordinates : [51.9607, 36.5665]
   const amount = doc.deal === 'rent'

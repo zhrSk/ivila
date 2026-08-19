@@ -34,7 +34,7 @@ type ImageDraft = {
   preview: string
   originalName: string
   uploadState: UploadState
-  mediaId?: string | number
+  blobUrl?: string
   error?: string
 }
 
@@ -334,7 +334,7 @@ export default function IvilaPropertyForm() {
   }
 
   async function uploadImage(item: ImageDraft, index: number) {
-    if (item.mediaId) return item.mediaId
+    if (item.blobUrl) return item.blobUrl
 
     setImages((current) => current.map((candidate) => candidate.key === item.key
       ? { ...candidate, uploadState: 'uploading', error: undefined }
@@ -342,47 +342,46 @@ export default function IvilaPropertyForm() {
 
     const formData = new FormData()
     formData.append('file', item.file)
-    formData.append('_payload', JSON.stringify({
-      alt: title.trim() ? `${title.trim()} - تصویر ${index + 1}` : `${code.trim() || 'ivila'} - تصویر ${index + 1}`,
-    }))
+    formData.append('propertyCode', code.trim() || 'property')
 
-    const response = await fetch('/api/media', {
+    const response = await fetch('/api/ivila-blob-upload', {
       method: 'POST',
       credentials: 'include',
       body: formData,
     })
 
-    const result = await response.json().catch(() => null) as any
+    const result = await response.json().catch(() => null) as null | { url?: string; message?: string }
     if (response.status === 401) {
       window.location.assign('/ivila-login')
       throw new Error('AUTH_REQUIRED')
     }
-    if (!response.ok) {
+    if (!response.ok || !result?.url) {
       const message = response.status === 413
-        ? 'حجم تصویر بیش از حد مجاز Vercel است.'
-        : result?.errors?.[0]?.message || result?.message || 'آپلود تصویر انجام نشد.'
+        ? 'حجم تصویر بیش از حد مجاز مسیر Upload است.'
+        : result?.message === 'BLOB_STORE_NOT_CONNECTED'
+          ? 'Blob Store به این Deploy متصل نیست.'
+          : 'آپلود تصویر روی Vercel Blob انجام نشد.'
       setImages((current) => current.map((candidate) => candidate.key === item.key
         ? { ...candidate, uploadState: 'error', error: message }
         : candidate))
       throw new Error(message)
     }
 
-    const mediaId = result?.doc?.id ?? result?.id
-    if (!mediaId) throw new Error('شناسه تصویر از Backend دریافت نشد.')
-
     setImages((current) => current.map((candidate) => candidate.key === item.key
-      ? { ...candidate, uploadState: 'uploaded', mediaId }
+      ? { ...candidate, uploadState: 'uploaded', blobUrl: result.url }
       : candidate))
-    return mediaId as string | number
+    return result.url
   }
 
-  async function cleanupUploadedMedia(ids: Array<string | number>) {
-    await Promise.allSettled(ids.map((id) => fetch(`/api/media/${encodeURIComponent(String(id))}`, {
+  async function cleanupUploadedBlobs(urls: string[]) {
+    await Promise.allSettled(urls.map((url) => fetch('/api/ivila-blob-upload', {
       method: 'DELETE',
       credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url }),
     })))
-    setImages((current) => current.map((item) => ids.includes(item.mediaId as any)
-      ? { ...item, mediaId: undefined, uploadState: 'ready' }
+    setImages((current) => current.map((item) => item.blobUrl && urls.includes(item.blobUrl)
+      ? { ...item, blobUrl: undefined, uploadState: 'ready' }
       : item))
   }
 
@@ -401,23 +400,23 @@ export default function IvilaPropertyForm() {
     }
 
     if (images.length > 0 && blobStatus !== 'ready') {
-      setError('Vercel Blob آماده نیست و تصاویر قابل ذخیره دائمی نیستند.')
+      setError('Vercel Blob/OIDC آماده نیست و تصاویر قابل ذخیره دائمی نیستند.')
       return
     }
 
     setBusy(true)
     setError('')
     setSuccess(false)
-    const createdMediaIds: Array<string | number> = []
+    const createdBlobUrls: string[] = []
 
     try {
-      const mediaIds: Array<string | number> = []
+      const imageUrls: string[] = []
       for (let index = 0; index < images.length; index += 1) {
         const item = images[index]
-        const existed = Boolean(item.mediaId)
-        const id = await uploadImage(item, index)
-        mediaIds.push(id)
-        if (!existed) createdMediaIds.push(id)
+        const existed = Boolean(item.blobUrl)
+        const url = await uploadImage(item, index)
+        imageUrls.push(url)
+        if (!existed) createdBlobUrls.push(url)
       }
 
       const body = {
@@ -435,7 +434,7 @@ export default function IvilaPropertyForm() {
         salePriceToman: deal === 'sale' ? numeric(salePrice) : undefined,
         depositToman: deal === 'rent' ? numeric(deposit) : undefined,
         monthlyRentToman: deal === 'rent' ? numeric(monthlyRent) : undefined,
-        images: mediaIds,
+        imageUrls,
         status,
         featured: false,
       }
@@ -451,13 +450,13 @@ export default function IvilaPropertyForm() {
       try { result = await response.json() } catch {}
 
       if (response.status === 401) {
-        if (createdMediaIds.length) await cleanupUploadedMedia(createdMediaIds)
+        if (createdBlobUrls.length) await cleanupUploadedBlobs(createdBlobUrls)
         window.location.assign('/ivila-login')
         return
       }
 
       if (!response.ok) {
-        if (createdMediaIds.length) await cleanupUploadedMedia(createdMediaIds)
+        if (createdBlobUrls.length) await cleanupUploadedBlobs(createdBlobUrls)
         const message = result?.errors?.[0]?.message || result?.message || 'ذخیره فایل انجام نشد.'
         setError(message)
         return
@@ -466,7 +465,7 @@ export default function IvilaPropertyForm() {
       setSuccess(true)
       setTimeout(() => window.location.assign('/admin'), 700)
     } catch (reason) {
-      if (createdMediaIds.length) await cleanupUploadedMedia(createdMediaIds)
+      if (createdBlobUrls.length) await cleanupUploadedBlobs(createdBlobUrls)
       if (reason instanceof Error && reason.message === 'AUTH_REQUIRED') return
       setError(reason instanceof Error ? reason.message : 'ارتباط با Backend برقرار نشد. دوباره تلاش کن.')
     } finally {
@@ -596,7 +595,7 @@ export default function IvilaPropertyForm() {
             </div>
 
             {blobStatus === 'loading' && <div className={styles.mediaInfo}>در حال بررسی اتصال Vercel Blob…</div>}
-            {blobStatus === 'missing' && <div className={styles.mediaWarning}>Vercel Blob هنوز به پروژه متصل نیست. عکس‌ها را فعلاً انتخاب نکن؛ بعد از اتصال Blob این بخش آماده می‌شود.</div>}
+            {blobStatus === 'missing' && <div className={styles.mediaWarning}>اتصال Blob/OIDC برای این Deploy شناسایی نشد. BLOB_STORE_ID و Vercel OIDC را بررسی کن.</div>}
             {blobStatus === 'error' && <div className={styles.mediaWarning}>وضعیت Vercel Blob دریافت نشد. یک‌بار صفحه را Refresh کن.</div>}
 
             {images.length > 0 && (
@@ -638,7 +637,7 @@ export default function IvilaPropertyForm() {
                           <button type="button" onClick={() => moveImage(index, index + 1)} disabled={busy || index === images.length - 1} aria-label="بعدی"><ChevronLeft size={15} /></button>
                         </div>
                       </div>
-                      {item.uploadState === 'uploading' && <div className={styles.galleryUploadState}>در حال ارسال به Blob…</div>}
+                      {item.uploadState === 'uploading' && <div className={styles.galleryUploadState}>در حال ارسال مستقیم به Blob…</div>}
                       {item.uploadState === 'uploaded' && <div className={`${styles.galleryUploadState} ${styles.galleryUploadDone}`}><Check size={13} /> آپلود شد</div>}
                       {item.uploadState === 'error' && <div className={`${styles.galleryUploadState} ${styles.galleryUploadError}`}>{item.error || 'خطای آپلود'}</div>}
                     </article>
