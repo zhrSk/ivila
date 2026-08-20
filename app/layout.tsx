@@ -4,8 +4,8 @@ import './globals.css'
 import 'maplibre-gl/dist/maplibre-gl.css'
 
 export const metadata: Metadata = {
-  title: 'املاک شمال | فایل‌های ساحلی و جنگلی',
-  description: 'سامانه جستجو و مدیریت فایل‌های ملکی شمال با محور نقشه و محدوده‌های جغرافیایی.'
+  title: { default: 'املاک شمال', template: '%s | املاک شمال' },
+  description: 'سامانه عمومی جستجو و مدیریت فایل‌های ملکی شمال.'
 }
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

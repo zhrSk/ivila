@@ -121,7 +121,7 @@ export default function IvilaAdminDashboard() {
           fetch('/api/users/me', { credentials: 'include', cache: 'no-store' }),
           fetch('/api/properties?limit=200&sort=-updatedAt&depth=0', { credentials: 'include', cache: 'no-store' }),
         ])
-        if (meResponse.status === 401 || propertiesResponse.status === 401) { window.location.assign('/ivila-login'); return }
+        if (meResponse.status === 401 || propertiesResponse.status === 401) { window.location.assign('/login'); return }
         if (!meResponse.ok || !propertiesResponse.ok) throw new Error('API_NOT_READY')
         const me = await meResponse.json() as MeResponse
         const data = await propertiesResponse.json() as PropertiesResponse
@@ -218,7 +218,7 @@ export default function IvilaAdminDashboard() {
         </nav>
         <div className={styles.sidebarFooter}>
           <div className={styles.userMini}><div className={styles.avatar}>{(user?.name || user?.phone || user?.username || 'i').slice(0,1)}</div><div><strong>{user?.name || 'کاربر پنل'}</strong><span>{isAdmin ? 'ادمین اصلی' : 'مشاور'}</span></div></div>
-          <a className={styles.logout} href="/ivila-logout"><LogOut size={17}/> خروج</a>
+          <a className={styles.logout} href="/logout"><LogOut size={17}/> خروج</a>
         </div>
       </aside>
 

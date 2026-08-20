@@ -152,7 +152,7 @@ export default function IvilaCRM() {
     setError('')
     const suffix = agentId && agentId !== 'all' ? `?agentId=${encodeURIComponent(agentId)}` : ''
     const response = await fetch(`/api/ivila-crm${suffix}`, { credentials: 'include', cache: 'no-store' })
-    if (response.status === 401) { window.location.assign('/ivila-login'); return }
+    if (response.status === 401) { window.location.assign('/login'); return }
     const result = await response.json().catch(() => null) as CRMResponse | null
     if (!response.ok) throw new Error(result?.message || 'CRM_LOAD_FAILED')
     setCurrentUser(result?.currentUser || null)
@@ -169,7 +169,7 @@ export default function IvilaCRM() {
           fetch('/api/ivila-crm', { credentials: 'include', cache: 'no-store' }),
           fetch('/api/properties?limit=300&sort=-updatedAt&depth=0', { credentials: 'include', cache: 'no-store' }),
         ])
-        if (crmResponse.status === 401 || propertiesResponse.status === 401) { window.location.assign('/ivila-login'); return }
+        if (crmResponse.status === 401 || propertiesResponse.status === 401) { window.location.assign('/login'); return }
         const crm = await crmResponse.json().catch(() => null) as CRMResponse | null
         const propertyData = await propertiesResponse.json().catch(() => null) as PropertiesResponse | null
         if (!crmResponse.ok) throw new Error(crm?.message || 'CRM_LOAD_FAILED')

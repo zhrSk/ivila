@@ -19,7 +19,7 @@ export default function IvilaProfile() {
   const [passwordBusy, setPasswordBusy] = useState(false)
   const [passwordMessage, setPasswordMessage] = useState('')
 
-  useEffect(() => { fetch('/api/users/me', { credentials:'include', cache:'no-store' }).then(async r => { if (r.status===401) { window.location.assign('/ivila-login'); return } const d=await r.json() as any; const u=d?.user; if (!u) return; setId(u.id); setName(u.name||''); setPhone(u.phone||u.username||''); setBio(u.bio||''); setRole(u.role||'agent') }) }, [])
+  useEffect(() => { fetch('/api/users/me', { credentials:'include', cache:'no-store' }).then(async r => { if (r.status===401) { window.location.assign('/login'); return } const d=await r.json() as any; const u=d?.user; if (!u) return; setId(u.id); setName(u.name||''); setPhone(u.phone||u.username||''); setBio(u.bio||''); setRole(u.role||'agent') }) }, [])
 
   async function submit(e:FormEvent){
     e.preventDefault(); setSaved(false); setError('')

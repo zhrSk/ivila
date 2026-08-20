@@ -13,36 +13,39 @@ export function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname
   const hasToken = Boolean(request.cookies.get('payload-token'))
 
-  if (pathname === '/admin/logout') {
-    return NextResponse.redirect(new URL('/ivila-logout', request.url))
-  }
+  // Keep old branded routes only as compatibility aliases; never leave them visible.
+  if (pathname === '/ivila-login') return NextResponse.redirect(new URL('/login', request.url))
+  if (pathname === '/ivila-logout') return NextResponse.redirect(new URL('/logout', request.url))
+
+  if (pathname === '/admin/logout') return NextResponse.redirect(new URL('/logout', request.url))
 
   if (PUBLIC_PAYLOAD_ADMIN_ROUTES.some((route) => pathname.startsWith(route))) {
-    return NextResponse.redirect(new URL('/ivila-login', request.url))
+    return NextResponse.redirect(new URL('/login', request.url))
   }
 
-  // Keep the public URL /admin, but render ivila's own admin UI instead of
-  // Payload's Next.js admin renderer. Payload remains the backend/auth/API.
   if (pathname === '/admin' || pathname.startsWith('/admin/')) {
-    if (!hasToken) {
-      return NextResponse.redirect(new URL('/ivila-login', request.url))
-    }
+    if (!hasToken) return NextResponse.redirect(new URL('/login', request.url))
 
+    // Internal implementation route stays hidden because this is a rewrite, not a redirect.
     const target = request.nextUrl.clone()
     target.pathname = pathname.replace(/^\/admin/, '/ivila-panel') || '/ivila-panel'
     return NextResponse.rewrite(target)
   }
 
-  // Do not allow bypassing /admin by opening the internal route directly.
+  // Internal implementation route is never linked publicly. Keep it functional
+  // as the rewrite target, but still protect it if somebody opens it directly.
   if (pathname === '/ivila-panel' || pathname.startsWith('/ivila-panel/')) {
-    if (!hasToken) {
-      return NextResponse.redirect(new URL('/ivila-login', request.url))
-    }
+    if (!hasToken) return NextResponse.redirect(new URL('/login', request.url))
   }
 
   return NextResponse.next()
 }
 
 export const config = {
-  matcher: ['/admin/:path*', '/ivila-panel/:path*'],
+  matcher: [
+    '/admin/:path*',
+    '/ivila-panel/:path*',
+    '/ivila-login',
+    '/ivila-logout',
+  ],
 }

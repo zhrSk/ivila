@@ -64,6 +64,80 @@ function numeric(value: string) {
   return Number.isFinite(number) ? number : undefined
 }
 
+function latinDigits(value: string) {
+  const fa = '۰۱۲۳۴۵۶۷۸۹'
+  const ar = '٠١٢٣٤٥٦٧٨٩'
+  return value
+    .replace(/[۰-۹]/g, (digit) => String(fa.indexOf(digit)))
+    .replace(/[٠-٩]/g, (digit) => String(ar.indexOf(digit)))
+}
+
+function moneyDigits(value: string) {
+  return latinDigits(value).replace(/[^0-9]/g, '').replace(/^0+(?=\d)/, '')
+}
+
+function formatMoneyInput(value: string) {
+  const digits = moneyDigits(value)
+  return digits ? digits.replace(/\B(?=(\d{3})+(?!\d))/g, ',') : ''
+}
+
+function humanMoney(value: string) {
+  const amount = Number(moneyDigits(value))
+  if (!Number.isFinite(amount) || amount <= 0) return ''
+  if (amount >= 1_000_000_000) {
+    return `${(amount / 1_000_000_000).toLocaleString('fa-IR', { maximumFractionDigits: 2 })} میلیارد تومان`
+  }
+  if (amount >= 1_000_000) {
+    return `${(amount / 1_000_000).toLocaleString('fa-IR', { maximumFractionDigits: 2 })} میلیون تومان`
+  }
+  return `${amount.toLocaleString('fa-IR')} تومان`
+}
+
+function quickMoneyNumber(value: string) {
+  const normalized = latinDigits(value).replace(/٫/g, '.').replace(/,/g, '.').replace(/[^0-9.]/g, '')
+  const firstDot = normalized.indexOf('.')
+  const safe = firstDot < 0 ? normalized : normalized.slice(0, firstDot + 1) + normalized.slice(firstDot + 1).replace(/\./g, '')
+  const number = Number(safe)
+  return Number.isFinite(number) && number > 0 ? number : null
+}
+
+function SmartMoneyInput({ label, value, onChange, span = false }: { label: string; value: string; onChange: (value: string) => void; span?: boolean }) {
+  const [quick, setQuick] = useState('')
+
+  function apply(multiplier: number) {
+    const amount = quickMoneyNumber(quick)
+    if (!amount) return
+    onChange(String(Math.round(amount * multiplier)))
+  }
+
+  return (
+    <div className={`${styles.field} ${styles.smartMoneyField} ${span ? styles.span2 : ''}`}>
+      <span>{label}</span>
+      <input
+        inputMode="numeric"
+        value={formatMoneyInput(value)}
+        onChange={(event) => onChange(moneyDigits(event.target.value))}
+        placeholder="مثلاً 18,800,000,000"
+        dir="ltr"
+      />
+      {value && <small className={styles.moneyHuman}>{humanMoney(value)}</small>}
+      <div className={styles.moneyAssistant}>
+        <input
+          inputMode="decimal"
+          value={quick}
+          onChange={(event) => setQuick(event.target.value)}
+          placeholder="عدد کوتاه؛ مثلاً 18.8"
+          dir="ltr"
+          aria-label={`${label} - مقدار کوتاه`}
+        />
+        <button type="button" onClick={() => apply(1_000_000)}>میلیون</button>
+        <button type="button" onClick={() => apply(1_000_000_000)}>میلیارد</button>
+      </div>
+      <small className={styles.moneyTip}>عدد کوتاه را بنویس و واحد را بزن؛ صفرها خودکار اضافه می‌شوند.</small>
+    </div>
+  )
+}
+
 function randomKey() {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`
 }
@@ -328,7 +402,7 @@ export default function IvilaPropertyForm({ propertyId }: { propertyId?: string 
 
     fetch('/api/users/me', { cache: 'no-store', credentials: 'include' })
       .then(async (response) => {
-        if (response.status === 401) { window.location.assign('/ivila-login'); return }
+        if (response.status === 401) { window.location.assign('/login'); return }
         const result = await response.json().catch(() => null) as any
         if (!disposed && result?.user) {
           setUserRole(result.user.role === 'admin' ? 'admin' : 'agent')
@@ -341,7 +415,7 @@ export default function IvilaPropertyForm({ propertyId }: { propertyId?: string 
     if (propertyId) {
       fetch(`/api/properties/${propertyId}?depth=0`, { cache: 'no-store', credentials: 'include' })
         .then(async (response) => {
-          if (response.status === 401) { window.location.assign('/ivila-login'); return }
+          if (response.status === 401) { window.location.assign('/login'); return }
           if (!response.ok) throw new Error('PROPERTY_LOAD_FAILED')
           const doc = await response.json() as any
           if (disposed) return
@@ -573,6 +647,8 @@ export default function IvilaPropertyForm({ propertyId }: { propertyId?: string 
     setCustomAmenity('')
   }
 
+  const customAmenities = amenities.filter((item) => !DEFAULT_AMENITIES.includes(item))
+
   async function addFiles(fileList: FileList | File[]) {
     if (blobStatus !== 'ready') {
       setError('برای آپلود عکس، Vercel Blob باید به پروژه متصل باشد.')
@@ -660,7 +736,7 @@ export default function IvilaPropertyForm({ propertyId }: { propertyId?: string 
 
     const result = await response.json().catch(() => null) as null | { url?: string; message?: string; code?: string; detail?: string }
     if (response.status === 401) {
-      window.location.assign('/ivila-login')
+      window.location.assign('/login')
       throw new Error('AUTH_REQUIRED')
     }
     if (!response.ok || !result?.url) {
@@ -801,7 +877,7 @@ export default function IvilaPropertyForm({ propertyId }: { propertyId?: string 
 
       if (response.status === 401) {
         if (createdBlobUrls.length) await cleanupUploadedBlobs(createdBlobUrls)
-        window.location.assign('/ivila-login')
+        window.location.assign('/login')
         return
       }
 
@@ -879,11 +955,11 @@ export default function IvilaPropertyForm({ propertyId }: { propertyId?: string 
             <div className={styles.sectionTitle}><span>۲</span><div><h2>قیمت و انتشار</h2><p>قیمت و وضعیت نمایش فایل.</p></div></div>
             <div className={styles.fieldsGrid}>
               {deal === 'sale' ? (
-                <label className={`${styles.field} ${styles.span2}`}><span>قیمت فروش (تومان)</span><input inputMode="numeric" value={salePrice} onChange={(e) => setSalePrice(e.target.value)} placeholder="مثلاً 18500000000" dir="ltr" /></label>
+                <SmartMoneyInput label="قیمت فروش (تومان)" value={salePrice} onChange={setSalePrice} span />
               ) : deal === 'rent' ? (
                 <>
-                  <label className={styles.field}><span>ودیعه (تومان)</span><input inputMode="numeric" value={deposit} onChange={(e) => setDeposit(e.target.value)} dir="ltr" /></label>
-                  <label className={styles.field}><span>اجاره ماهانه (تومان)</span><input inputMode="numeric" value={monthlyRent} onChange={(e) => setMonthlyRent(e.target.value)} dir="ltr" /></label>
+                  <SmartMoneyInput label="ودیعه (تومان)" value={deposit} onChange={setDeposit} />
+                  <SmartMoneyInput label="اجاره ماهانه (تومان)" value={monthlyRent} onChange={setMonthlyRent} />
                 </>
               ) : (
                 <div className={`${styles.agentDraftNotice} ${styles.span2}`}>قیمت اختیاری است و بعداً توسط ادمین تکمیل می‌شود.</div>
@@ -955,6 +1031,15 @@ export default function IvilaPropertyForm({ propertyId }: { propertyId?: string 
               {DEFAULT_AMENITIES.map((item) => <button key={item} type="button" className={amenities.includes(item) ? styles.amenityActive : ''} onClick={() => toggleAmenity(item)}><Check size={14}/>{item}</button>)}
             </div>
             <div className={styles.customAmenity}><input value={customAmenity} onChange={(e) => setCustomAmenity(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCustomAmenity() } }} placeholder="امکان دیگر..."/><button type="button" onClick={addCustomAmenity}>افزودن</button></div>
+            {customAmenities.length > 0 && (
+              <div className={styles.customAmenityList}>
+                {customAmenities.map((item) => (
+                  <button key={item} type="button" onClick={() => toggleAmenity(item)} title="حذف این امکان">
+                    <span>{item}</span><X size={13}/>
+                  </button>
+                ))}
+              </div>
+            )}
           </section>
 
           <section className={`${styles.formCard} ${styles.fullCard}`}>
