@@ -4,8 +4,8 @@ import '../globals.css'
 import 'maplibre-gl/dist/maplibre-gl.css'
 
 export const metadata: Metadata = {
-  title: 'ivila | املاک ساحلی و جنگلی رویان',
-  description: 'ivila؛ جستجو و کشف ملک در رویان با محور نقشه، محدوده‌های جغرافیایی و فایل‌های ساحلی و جنگلی.'
+  title: 'املاک شمال | فایل‌های ملکی',
+  description: 'سامانه جستجو و مدیریت فایل‌های ملکی شمال با محور نقشه و محدوده‌های جغرافیایی.'
 }
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
