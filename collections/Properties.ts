@@ -1,5 +1,5 @@
 import { computeEnvironmentalDistances } from '@/lib/spatial-distance'
-import type { CollectionConfig } from 'payload'
+import type { CollectionConfig, Where } from 'payload'
 
 function slugifyCode(code?: string) {
   return code?.trim().toLowerCase().replace(/\s+/g, '-')
@@ -12,6 +12,30 @@ function roleOf(user: unknown) {
 function userId(user: unknown) {
   const value = (user as { id?: string | number } | null | undefined)?.id
   return value === undefined || value === null ? '' : String(value)
+}
+
+function publishedOnlyWhere(): Where {
+  return {
+    status: { equals: 'published' },
+  }
+}
+
+function agentReadableWhere(id: string): Where {
+  return {
+    or: [
+      { status: { equals: 'published' } },
+      { createdByUserId: { equals: id } },
+    ],
+  }
+}
+
+function agentOwnDraftWhere(id: string): Where {
+  return {
+    and: [
+      { createdByUserId: { equals: id } },
+      { status: { equals: 'draft' } },
+    ],
+  }
 }
 
 export const Properties: CollectionConfig = {
@@ -28,36 +52,20 @@ export const Properties: CollectionConfig = {
   },
   access: {
     read: ({ req }) => {
-      if (!req.user) return { status: { equals: 'published' } }
+      if (!req.user) return publishedOnlyWhere()
       if (roleOf(req.user) === 'admin') return true
-      const id = userId(req.user)
-      return {
-        or: [
-          { status: { equals: 'published' } },
-          { createdByUserId: { equals: id } },
-        ],
-      }
+      return agentReadableWhere(userId(req.user))
     },
     create: ({ req }) => Boolean(req.user),
     update: ({ req }) => {
       if (roleOf(req.user) === 'admin') return true
       if (!req.user) return false
-      return {
-        and: [
-          { createdByUserId: { equals: userId(req.user) } },
-          { status: { equals: 'draft' } },
-        ],
-      }
+      return agentOwnDraftWhere(userId(req.user))
     },
     delete: ({ req }) => {
       if (roleOf(req.user) === 'admin') return true
       if (!req.user) return false
-      return {
-        and: [
-          { createdByUserId: { equals: userId(req.user) } },
-          { status: { equals: 'draft' } },
-        ],
-      }
+      return agentOwnDraftWhere(userId(req.user))
     },
   },
   hooks: {
