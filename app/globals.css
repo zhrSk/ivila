@@ -1314,3 +1314,60 @@ html, body {
   .gallery-close { top: 14px; left: 14px; }
   .gallery-thumbs button { width: 58px; height: 44px; }
 }
+
+/* ===== ivila public bugfix: detail navigation, privacy map and crisp gallery ===== */
+.detail-gallery-main { width: 100%; height: 100%; }
+.detail-gallery-main > img,
+.gallery-lightbox-stage > img {
+  image-rendering: auto;
+  filter: none !important;
+  transform: none !important;
+}
+.detail-map-private .maplibregl-canvas { cursor: default; }
+.detail-map-private .detail-map-overlay { max-width: min(360px, calc(100% - 24px)); }
+
+.mobile-site-menu { display: none; }
+
+@media (max-width: 1000px) {
+  .mobile-site-menu {
+    position: fixed;
+    z-index: 999;
+    inset: 72px 12px auto 12px;
+    display: block;
+    color: var(--ink);
+    direction: rtl;
+  }
+  .mobile-site-menu-card {
+    width: min(420px, 100%);
+    margin-right: auto;
+    padding: 10px;
+    border-radius: 18px;
+    border: 1px solid rgba(7,83,63,.13);
+    background: rgba(250,253,251,.97);
+    box-shadow: 0 24px 70px rgba(4,50,39,.20);
+    backdrop-filter: blur(18px);
+  }
+  .mobile-site-menu nav { display: grid; gap: 4px; }
+  .mobile-site-menu nav a,
+  .mobile-site-menu-login {
+    min-height: 44px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    font-weight: 700;
+  }
+  .mobile-site-menu nav a:hover { background: rgba(11,122,80,.07); }
+  .mobile-site-menu-login {
+    justify-content: center;
+    margin-top: 7px;
+    color: #fff;
+    background: linear-gradient(135deg, var(--forest), var(--sea-dark));
+  }
+}
+
+@media (min-width: 1400px) {
+  .detail-gallery { height: 600px; }
+}

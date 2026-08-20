@@ -23,18 +23,20 @@ export default function PropertyGallery({ images, title }: { images: string[]; t
 
   return <>
     <div className="detail-gallery">
-      <button type="button" className="detail-gallery-main" onClick={() => show(0)}><img src={gallery[0]} alt={title}/></button>
+      <button type="button" className="detail-gallery-main" onClick={() => show(0)}>
+        <img src={gallery[0]} alt={title} loading="eager" fetchPriority="high" decoding="async" draggable={false}/>
+      </button>
       <div className="detail-gallery-side">
-        {gallery.slice(1,3).map((src, i)=><button type="button" className="gallery-tile" key={src+i} onClick={()=>show(i+1)}><img src={src} alt={`${title} - ${i+2}`}/></button>)}
+        {gallery.slice(1,3).map((src, i)=><button type="button" className="gallery-tile" key={src+i} onClick={()=>show(i+1)}><img src={src} alt={`${title} - ${i+2}`} loading="lazy" decoding="async"/></button>)}
       </div>
       <button type="button" className="gallery-counter" onClick={()=>show(0)}><Images size={15}/>{gallery.length.toLocaleString('fa-IR')} تصویر · مشاهده همه</button>
     </div>
     {open && <div className="gallery-lightbox" role="dialog" aria-modal="true" aria-label="گالری تصاویر">
       <button className="gallery-close" type="button" onClick={()=>setOpen(false)}><X size={23}/></button>
       <button className="gallery-nav gallery-prev" type="button" onClick={()=>setIndex((index-1+gallery.length)%gallery.length)}><ChevronRight size={27}/></button>
-      <div className="gallery-lightbox-stage"><img src={gallery[index]} alt={`${title} - تصویر ${index+1}`}/><span>{(index+1).toLocaleString('fa-IR')} / {gallery.length.toLocaleString('fa-IR')}</span></div>
+      <div className="gallery-lightbox-stage"><img src={gallery[index]} alt={`${title} - تصویر ${index+1}`} decoding="async"/><span>{(index+1).toLocaleString('fa-IR')} / {gallery.length.toLocaleString('fa-IR')}</span></div>
       <button className="gallery-nav gallery-next" type="button" onClick={()=>setIndex((index+1)%gallery.length)}><ChevronLeft size={27}/></button>
-      <div className="gallery-thumbs">{gallery.map((src,i)=><button type="button" key={src+i} className={i===index?'active':''} onClick={()=>setIndex(i)}><img src={src} alt=""/></button>)}</div>
+      <div className="gallery-thumbs">{gallery.map((src,i)=><button type="button" key={src+i} className={i===index?'active':''} onClick={()=>setIndex(i)}><img src={src} alt="" loading="lazy"/></button>)}</div>
     </div>}
   </>
 }

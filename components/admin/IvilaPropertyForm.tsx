@@ -56,7 +56,7 @@ const DEFAULT_AMENITIES = ['پارکینگ','آسانسور','انباری','ب�
 
 const MAX_IMAGES = 30
 const MAX_UPLOAD_BYTES = 3_800_000
-const MAX_IMAGE_SIDE = 2400
+const MAX_IMAGE_SIDE = 3200
 
 function numeric(value: string) {
   if (!value.trim()) return undefined
@@ -169,17 +169,17 @@ async function prepareImage(file: File): Promise<PreparedImage> {
   const decoded = await decodeOrientedImage(file)
   try {
     let canvas = scaledCanvas(decoded.source, decoded.width, decoded.height, MAX_IMAGE_SIDE)
-    let encoded = await encodeForWeb(canvas, 0.84)
+    let encoded = await encodeForWeb(canvas, 0.90)
 
     // Phone photos can be very detailed. Reduce quality first, then dimensions,
     // until every single upload comfortably fits the Vercel request limit.
-    for (const quality of [0.78, 0.72, 0.66]) {
+    for (const quality of [0.86, 0.82, 0.78, 0.74]) {
       if (encoded.blob.size <= MAX_UPLOAD_BYTES) break
       encoded = await encodeForWeb(canvas, quality)
     }
 
-    while (encoded.blob.size > MAX_UPLOAD_BYTES && Math.max(canvas.width, canvas.height) > 1400) {
-      const nextMaxSide = Math.max(1400, Math.round(Math.max(canvas.width, canvas.height) * 0.82))
+    while (encoded.blob.size > MAX_UPLOAD_BYTES && Math.max(canvas.width, canvas.height) > 1800) {
+      const nextMaxSide = Math.max(1800, Math.round(Math.max(canvas.width, canvas.height) * 0.86))
       const reduced = document.createElement('canvas')
       const scale = nextMaxSide / Math.max(canvas.width, canvas.height)
       reduced.width = Math.max(1, Math.round(canvas.width * scale))
@@ -190,7 +190,7 @@ async function prepareImage(file: File): Promise<PreparedImage> {
       context.imageSmoothingQuality = 'high'
       context.drawImage(canvas, 0, 0, reduced.width, reduced.height)
       canvas = reduced
-      encoded = await encodeForWeb(canvas, 0.72)
+      encoded = await encodeForWeb(canvas, 0.80)
     }
 
     if (encoded.blob.size > MAX_UPLOAD_BYTES) throw new Error('حجم این تصویر بعد از فشرده‌سازی هنوز زیاد است.')

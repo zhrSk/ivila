@@ -3,12 +3,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { LocateFixed, ShieldCheck } from 'lucide-react'
 import type { Property } from '@/lib/data'
-import type { Map as MapLibreMap, Marker as MapLibreMarker } from 'maplibre-gl'
+import type { Map as MapLibreMap } from 'maplibre-gl'
+
+const SOURCE_ID = 'ivila-public-approx-location'
+const LAYER_ID = 'ivila-public-approx-circle'
 
 export default function PropertyLocationMap({ property }: { property: Property }) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<MapLibreMap | null>(null)
-  const markerRef = useRef<MapLibreMarker | null>(null)
   const [ready, setReady] = useState(false)
 
   useEffect(() => {
@@ -33,22 +35,40 @@ export default function PropertyLocationMap({ property }: { property: Property }
         container: containerRef.current,
         style: process.env.NEXT_PUBLIC_MAP_STYLE_URL || 'https://tiles.openfreemap.org/styles/liberty',
         center: [property.lng, property.lat],
-        zoom: 14.4,
+        zoom: 12.8,
         attributionControl: false,
-        maxPitch: 0
+        maxPitch: 0,
       })
       mapRef.current = map
       map.addControl(new module.NavigationControl({ showCompass: false }), 'bottom-left')
       map.addControl(new module.AttributionControl({ compact: true }), 'bottom-right')
 
-      const markerElement = document.createElement('div')
-      markerElement.className = `detail-map-marker marker-${property.lifestyle}`
-      markerElement.innerHTML = `<span>${property.code}</span>`
-      markerRef.current = new module.Marker({ element: markerElement, anchor: 'bottom' })
-        .setLngLat([property.lng, property.lat])
-        .addTo(map)
+      map.once('load', () => {
+        if (disposed) return
+        map.addSource(SOURCE_ID, {
+          type: 'geojson',
+          data: {
+            type: 'Feature',
+            geometry: { type: 'Point', coordinates: [property.lng, property.lat] },
+            properties: {},
+          },
+        })
+        map.addLayer({
+          id: LAYER_ID,
+          type: 'circle',
+          source: SOURCE_ID,
+          paint: {
+            'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, 20, 12, 38, 14, 78, 16, 155],
+            'circle-color': property.lifestyle === 'coast' ? '#0f93bd' : '#0b7a50',
+            'circle-opacity': 0.17,
+            'circle-stroke-color': property.lifestyle === 'coast' ? '#087fa6' : '#07533f',
+            'circle-stroke-width': 2,
+            'circle-stroke-opacity': 0.7,
+          },
+        })
+        setReady(true)
+      })
 
-      map.once('load', () => setReady(true))
       resizeObserver = new ResizeObserver(() => map.resize())
       resizeObserver.observe(containerRef.current)
     })
@@ -56,18 +76,16 @@ export default function PropertyLocationMap({ property }: { property: Property }
     return () => {
       disposed = true
       resizeObserver?.disconnect()
-      markerRef.current?.remove()
-      markerRef.current = null
       mapRef.current?.remove()
       mapRef.current = null
     }
-  }, [property.code, property.lat, property.lng, property.lifestyle])
+  }, [property.lat, property.lng, property.lifestyle])
 
   const recenter = () => mapRef.current?.flyTo({
     center: [property.lng, property.lat],
-    zoom: 14.4,
+    zoom: 12.8,
     duration: 700,
-    essential: true
+    essential: true,
   })
 
   return (
@@ -75,18 +93,18 @@ export default function PropertyLocationMap({ property }: { property: Property }
       <div className="detail-section-heading">
         <div>
           <span>موقعیت مکانی</span>
-          <h3>این فایل کجای منطقه قرار دارد؟</h3>
+          <h3>محدوده تقریبی فایل</h3>
         </div>
-        <div className="detail-map-note"><ShieldCheck size={15}/> موقعیت در نسخه دمو تقریبی است</div>
+        <div className="detail-map-note"><ShieldCheck size={15}/> نقطه دقیق فقط برای تیم ivila قابل مشاهده است</div>
       </div>
-      <div className="detail-map-shell">
+      <div className="detail-map-shell detail-map-private">
         <div ref={containerRef} className="detail-map-canvas" />
         {!ready && <div className="detail-map-loading">در حال بارگذاری نقشه…</div>}
         <div className="detail-map-overlay">
           <strong>{property.location}</strong>
-          <span>{property.seaDistanceM.toLocaleString('fa-IR')} متر تا دریا · {property.forestDistanceM.toLocaleString('fa-IR')} متر تا جنگل</span>
+          <span>دایره فقط محدوده تقریبی را نشان می‌دهد؛ محل واقعی ملک مخفی است.</span>
         </div>
-        <button className="detail-map-recenter" type="button" onClick={recenter}><LocateFixed size={17}/> نمایش ملک</button>
+        <button className="detail-map-recenter" type="button" onClick={recenter}><LocateFixed size={17}/> نمایش محدوده</button>
       </div>
     </section>
   )

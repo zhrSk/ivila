@@ -1,4 +1,5 @@
 import 'server-only'
+import { createHmac } from 'node:crypto'
 import config from '@payload-config'
 import { getPayload } from 'payload'
 import {
@@ -61,8 +62,9 @@ const documentMap: Record<NonNullable<PropertyDocument['documentStatus']>, Docum
   'in-progress': 'در حال اخذ سند',
 }
 
-function mediaURL(value: string | number | MediaLike, size: 'card' | 'detail' = 'card') {
+function mediaURL(value: string | number | MediaLike, size?: 'card' | 'detail') {
   if (!value || typeof value !== 'object') return null
+  if (!size) return value.url || value.sizes?.detail?.url || value.sizes?.card?.url || null
   return value.sizes?.[size]?.url || value.url || null
 }
 
@@ -90,6 +92,35 @@ function buildPrice(doc: PropertyDocument) {
   return sale ? formatToman(sale) : 'تماس بگیرید'
 }
 
+/**
+ * Public maps never receive the exact property point. The public point is a
+ * stable, secret-derived displacement roughly 0.9–1.4 km from the real point.
+ * It cannot be reversed from the public property code without the server secret.
+ */
+function privacySafeCoordinates(doc: PropertyDocument): [number, number] {
+  const exact = Array.isArray(doc.coordinates) && doc.coordinates.length === 2
+    ? [Number(doc.coordinates[0]), Number(doc.coordinates[1])] as [number, number]
+    : null
+
+  if (!exact || !Number.isFinite(exact[0]) || !Number.isFinite(exact[1])) {
+    return [Number(doc.publicLng ?? 51.9607), Number(doc.publicLat ?? 36.5665)]
+  }
+
+  const secret = process.env.PAYLOAD_SECRET || 'ivila-public-location-privacy'
+  const digest = createHmac('sha256', secret)
+    .update(`property:${String(doc.id)}:${doc.code || ''}`)
+    .digest()
+
+  const angle = (digest.readUInt16BE(0) / 65535) * Math.PI * 2
+  const radiusM = 900 + (digest.readUInt16BE(2) / 65535) * 500
+  const latitude = exact[1]
+  const latDelta = (radiusM * Math.cos(angle)) / 111_320
+  const lngScale = Math.max(0.2, Math.cos(latitude * Math.PI / 180))
+  const lngDelta = (radiusM * Math.sin(angle)) / (111_320 * lngScale)
+
+  return [exact[0] + lngDelta, exact[1] + latDelta]
+}
+
 function toFrontendProperty(doc: PropertyDocument): Property {
   let jsonGallery: string[] = []
   if (typeof doc.imageUrlsJson === 'string' && doc.imageUrlsJson.trim()) {
@@ -108,18 +139,17 @@ function toFrontendProperty(doc: PropertyDocument): Property {
     : []
   const directGallery = jsonGallery.length ? jsonGallery : legacyDirectGallery
   const imageDocs = Array.isArray(doc.images) ? doc.images : []
+
+  // Detail/lightbox always uses the original legacy media URL when available.
+  // The old code preferred a 1600px derivative, which became visibly soft on large displays.
   const legacyGallery = imageDocs
-    .map(item => mediaURL(item, 'detail'))
+    .map(item => mediaURL(item))
     .filter((url): url is string => Boolean(url))
   const gallery = directGallery.length ? directGallery : legacyGallery
 
   const cardCover = directGallery[0] || (imageDocs.length ? mediaURL(imageDocs[0], 'card') : null)
   const fallback = doc.fallbackImage || '/images/villa-01.jpg'
-  const exactCoordinates = Array.isArray(doc.coordinates) ? doc.coordinates : null
-  const coordinates: [number, number] = [
-    Number(doc.publicLng ?? exactCoordinates?.[0] ?? 51.9607),
-    Number(doc.publicLat ?? exactCoordinates?.[1] ?? 36.5665),
-  ]
+  const coordinates = privacySafeCoordinates(doc)
   const amount = doc.deal === 'rent'
     ? Number(doc.monthlyRentToman || 0)
     : Number(doc.salePriceToman || 0)
@@ -139,8 +169,8 @@ function toFrontendProperty(doc: PropertyDocument): Property {
     documentStatus: doc.documentStatus ? documentMap[doc.documentStatus] : 'در حال اخذ سند',
     seaDistanceM: Number(doc.seaDistanceM || 0),
     forestDistanceM: Number(doc.forestDistanceM || 0),
-    lng: Number(coordinates[0]),
-    lat: Number(coordinates[1]),
+    lng: coordinates[0],
+    lat: coordinates[1],
     image: cardCover || gallery[0] || fallback,
     images: gallery.length ? gallery : [fallback],
     badges: doc.badges?.length ? doc.badges : ['فایل ivila'],
@@ -163,10 +193,10 @@ export async function getPublicProperties(): Promise<Property[]> {
       collection: 'properties',
       depth: 2,
       limit: 200,
-      overrideAccess: false,
-      where: {
-        status: { equals: 'published' },
-      },
+      // Server-side repository may read the exact point, but it is converted to
+      // a privacy-safe public point before anything reaches the browser.
+      overrideAccess: true,
+      where: { status: { equals: 'published' } },
       sort: '-updatedAt',
     })
 
@@ -190,7 +220,7 @@ export async function getPublicProperty(id: string): Promise<Property | null> {
         collection: 'properties',
         depth: 2,
         limit: 1,
-        overrideAccess: false,
+        overrideAccess: true,
         where: {
           and: [
             { status: { equals: 'published' } },

@@ -1,18 +1,18 @@
-ivila CRM / Customer Visits V1
+ivila public bugfix v1
 
-Replace/add only the files in this ZIP.
+Changed files:
+- components/SiteHeader.tsx
+- components/PropertyLocationMap.tsx
+- components/PropertyGallery.tsx
+- lib/property-repository.ts
+- app/globals.css
+- components/admin/IvilaPropertyForm.tsx
 
-What this adds:
-- /admin/crm (rewritten internally to /ivila-panel/crm)
-- Customers per consultant
-- Property visits / calls
-- Visit outcome and offer
-- Next follow-up date
-- Mark follow-up as done
-- Admin can filter CRM by consultant
-- Quick "register visit" action on published property cards
-- Safe production DDL creates only ivila_customers and ivila_visits; nothing is dropped
+Fixes:
+1) Public location is now a secret-derived approximate point about 0.9–1.4 km from the real property, and the detail map shows an approximate area circle instead of an exact-looking pin.
+2) Header links are absolute home links, Search/Login buttons work, and the mobile menu actually opens.
+3) Legacy Payload gallery uses original media URLs instead of the 1600px detail derivative. Main gallery image is loaded eagerly and without visual filtering.
+4) Future phone uploads keep up to 3200px and start at WebP quality 0.90, while retaining the existing ~3.8 MB request safety limit.
 
-No new npm package is required.
-Do NOT enable IVILA_BOOTSTRAP_SCHEMA.
-Keep IVILA_IMPORT_SPATIAL_OSM off if GIS import has already completed.
+No DB migration and no new package are required.
+Existing Blob photos that were already compressed to 2400px are not re-encoded automatically; re-upload only if a particular old photo remains visibly soft.
