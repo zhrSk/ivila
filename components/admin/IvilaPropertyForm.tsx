@@ -155,6 +155,7 @@ export default function IvilaPropertyForm() {
   const [addingImages, setAddingImages] = useState(false)
   const [dropActive, setDropActive] = useState(false)
   const [blobStatus, setBlobStatus] = useState<BlobStatus>('loading')
+  const [blobHealthDetail, setBlobHealthDetail] = useState('')
 
   const uploadedCount = useMemo(() => images.filter((item) => item.uploadState === 'uploaded').length, [images])
 
@@ -201,10 +202,14 @@ export default function IvilaPropertyForm() {
     fetch('/api/ivila-media-health', { cache: 'no-store', credentials: 'include' })
       .then(async (response) => {
         const result = await response.json().catch(() => null) as null | { ready?: boolean }
-        if (!disposed) setBlobStatus(response.ok && result?.ready ? 'ready' : 'missing')
+        if (!disposed) {
+          const ready = response.ok && result?.ready
+          setBlobStatus(ready ? 'ready' : 'missing')
+          setBlobHealthDetail(ready ? '' : String(result?.detail || result?.code || 'اتصال Blob در Runtime شناسایی نشد.'))
+        }
       })
       .catch(() => {
-        if (!disposed) setBlobStatus('error')
+        if (!disposed) { setBlobStatus('error'); setBlobHealthDetail('Health endpoint پاسخ نداد.') }
       })
 
     async function setupMap() {
@@ -358,19 +363,21 @@ export default function IvilaPropertyForm() {
     if (!response.ok || !result?.url) {
       const message = response.status === 413
         ? 'حجم تصویر بیش از حد مجاز مسیر Upload است.'
-        : result?.code === 'OIDC_ENVIRONMENT_NOT_ALLOWED'
-          ? 'OIDC برای Environment این Deploy اجازه دسترسی به Blob را ندارد.'
-          : result?.code === 'BLOB_ACCESS_DENIED'
-            ? 'دسترسی OIDC به Blob Store رد شد.'
-            : result?.code === 'BLOB_STORE_NOT_FOUND'
-              ? 'Blob Store پیدا نشد؛ اتصال Store به Project را بررسی کن.'
-              : result?.code === 'BLOB_CREDENTIALS_MISSING'
-                ? 'Credential لازم برای Blob در Runtime پیدا نشد.'
-                : result?.message === 'BLOB_STORE_NOT_CONNECTED'
-                  ? 'Blob Store به این Deploy متصل نیست.'
-                  : result?.detail
-                    ? `آپلود Blob انجام نشد: ${result.detail}`
-                    : 'آپلود تصویر روی Vercel Blob انجام نشد.'
+        : result?.code === 'BLOB_STORE_IS_PRIVATE'
+          ? 'Blob Store هنوز Private است؛ Store عمومی را به پروژه متصل کن.'
+          : result?.code === 'OIDC_ENVIRONMENT_NOT_ALLOWED'
+            ? 'OIDC برای Environment این Deploy اجازه دسترسی به Blob را ندارد.'
+            : result?.code === 'BLOB_ACCESS_DENIED'
+              ? 'دسترسی OIDC به Blob Store رد شد.'
+              : result?.code === 'BLOB_STORE_NOT_FOUND'
+                ? 'Blob Store پیدا نشد؛ اتصال Store جدید به Project/Production را بررسی کن.'
+                : result?.code === 'BLOB_CREDENTIALS_MISSING'
+                  ? 'Credential لازم برای Blob در Runtime پیدا نشد.'
+                  : result?.message === 'BLOB_STORE_NOT_CONNECTED' || result?.code === 'BLOB_STORE_ID_MISSING'
+                    ? 'BLOB_STORE_ID در این Deployment وجود ندارد؛ Store جدید را به Production همین پروژه متصل و Redeploy کن.'
+                    : result?.detail
+                      ? `آپلود Blob انجام نشد: ${result.detail}`
+                      : 'آپلود تصویر روی Vercel Blob انجام نشد.'
       setImages((current) => current.map((candidate) => candidate.key === item.key
         ? { ...candidate, uploadState: 'error', error: message }
         : candidate))
@@ -605,7 +612,7 @@ export default function IvilaPropertyForm() {
             </div>
 
             {blobStatus === 'loading' && <div className={styles.mediaInfo}>در حال بررسی اتصال Vercel Blob…</div>}
-            {blobStatus === 'missing' && <div className={styles.mediaWarning}>اتصال Blob/OIDC برای این Deploy شناسایی نشد. BLOB_STORE_ID و Vercel OIDC را بررسی کن.</div>}
+            {blobStatus === 'missing' && <div className={styles.mediaWarning}>اتصال Blob آماده نیست: {blobHealthDetail || 'Blob Store را به Production همین پروژه متصل و Redeploy کن.'}</div>}
             {blobStatus === 'error' && <div className={styles.mediaWarning}>وضعیت Vercel Blob دریافت نشد. یک‌بار صفحه را Refresh کن.</div>}
 
             {images.length > 0 && (

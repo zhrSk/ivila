@@ -13,43 +13,42 @@ function compactError(error: unknown) {
     .slice(0, 260)
 }
 
-export async function GET(request: Request) {
+export async function GET() {
   const storeId = process.env.BLOB_STORE_ID?.trim()
-  const oidcToken = request.headers.get('x-vercel-oidc-token')?.trim() || process.env.VERCEL_OIDC_TOKEN?.trim()
 
   if (!storeId) {
     return NextResponse.json({
       ready: false,
       provider: 'vercel-blob',
-      auth: 'missing',
-      storeConnected: false,
       code: 'BLOB_STORE_ID_MISSING',
+      detail: 'BLOB_STORE_ID در Runtime این Deployment وجود ندارد. Blob Store جدید را به Project و Production متصل کن و Redeploy بزن.',
     })
   }
 
   try {
+    // Do not manually read/pass VERCEL_OIDC_TOKEN here. On Vercel, the Blob SDK
+    // obtains and refreshes the short-lived OIDC credential from the runtime.
     await list({
       limit: 1,
       storeId,
-      ...(oidcToken ? { oidcToken } : {}),
     })
 
     return NextResponse.json({
       ready: true,
       provider: 'vercel-blob',
-      auth: oidcToken ? 'explicit-oidc' : 'sdk-context',
+      auth: 'vercel-oidc-sdk',
       storeConnected: true,
     })
   } catch (error) {
-    console.error('[ivila blob health] SDK probe failed', error)
+    const detail = compactError(error)
+    console.error('[ivila blob health] SDK probe failed', { detail, error })
 
     return NextResponse.json({
       ready: false,
       provider: 'vercel-blob',
-      auth: 'probe-failed',
-      storeConnected: true,
       code: 'BLOB_SDK_PROBE_FAILED',
-      detail: compactError(error),
+      detail,
+      storeConnected: true,
     })
   }
 }

@@ -29,10 +29,11 @@ function compactError(error: unknown) {
 
 function classifyBlobError(error: unknown) {
   const message = error instanceof Error ? error.message : ''
+  if (/private store/i.test(message) && /public access/i.test(message)) return 'BLOB_STORE_IS_PRIVATE'
   if (/environment/i.test(message) && /oidc/i.test(message)) return 'OIDC_ENVIRONMENT_NOT_ALLOWED'
   if (/access denied|forbidden/i.test(message)) return 'BLOB_ACCESS_DENIED'
   if (/store does not exist|store not found/i.test(message)) return 'BLOB_STORE_NOT_FOUND'
-  if (/no blob credentials|oidcToken|BLOB_STORE_ID/i.test(message)) return 'BLOB_CREDENTIALS_MISSING'
+  if (/no blob credentials|BLOB_STORE_ID|oidc/i.test(message)) return 'BLOB_CREDENTIALS_MISSING'
   if (/file is too large|file length/i.test(message)) return 'BLOB_FILE_TOO_LARGE'
   return 'BLOB_UPLOAD_FAILED'
 }
@@ -43,12 +44,8 @@ async function authenticated(request: Request) {
   return Boolean(user)
 }
 
-function blobAuth(request: Request) {
-  const storeId = process.env.BLOB_STORE_ID?.trim()
-  const oidcToken = request.headers.get('x-vercel-oidc-token')?.trim() || process.env.VERCEL_OIDC_TOKEN?.trim()
-
-  if (!storeId) return { storeId: undefined, oidcToken: undefined }
-  return { storeId, oidcToken: oidcToken || undefined }
+function getStoreId() {
+  return process.env.BLOB_STORE_ID?.trim()
 }
 
 export async function POST(request: Request) {
@@ -57,8 +54,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ message: 'AUTH_REQUIRED' }, { status: 401 })
     }
 
-    const auth = blobAuth(request)
-    if (!auth.storeId) {
+    const storeId = getStoreId()
+    if (!storeId) {
       return NextResponse.json({ message: 'BLOB_STORE_NOT_CONNECTED', code: 'BLOB_STORE_ID_MISSING' }, { status: 503 })
     }
 
@@ -77,13 +74,15 @@ export async function POST(request: Request) {
     }
 
     const pathname = `properties/${cleanSegment(propertyCode)}/${cleanSegment(file.name.replace(/\.[^.]+$/, ''))}.webp`
+
+    // Let @vercel/blob obtain/refresh the OIDC token from the Vercel runtime.
+    // Only the connected store id is selected explicitly.
     const blob = await put(pathname, file, {
       access: 'public',
       addRandomSuffix: true,
       contentType: file.type,
       cacheControlMaxAge: 60 * 60 * 24 * 30,
-      storeId: auth.storeId,
-      ...(auth.oidcToken ? { oidcToken: auth.oidcToken } : {}),
+      storeId,
     })
 
     return NextResponse.json({
@@ -91,7 +90,7 @@ export async function POST(request: Request) {
       pathname: blob.pathname,
       contentType: blob.contentType,
       size: file.size,
-      auth: auth.oidcToken ? 'explicit-oidc' : 'sdk-context',
+      auth: 'vercel-oidc-sdk',
     })
   } catch (error) {
     const code = classifyBlobError(error)
@@ -107,8 +106,8 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ message: 'AUTH_REQUIRED' }, { status: 401 })
     }
 
-    const auth = blobAuth(request)
-    if (!auth.storeId) {
+    const storeId = getStoreId()
+    if (!storeId) {
       return NextResponse.json({ message: 'BLOB_STORE_NOT_CONNECTED', code: 'BLOB_STORE_ID_MISSING' }, { status: 503 })
     }
 
@@ -118,10 +117,7 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ message: 'BLOB_URL_REQUIRED' }, { status: 400 })
     }
 
-    await del(url, {
-      storeId: auth.storeId,
-      ...(auth.oidcToken ? { oidcToken: auth.oidcToken } : {}),
-    })
+    await del(url, { storeId })
     return NextResponse.json({ ok: true })
   } catch (error) {
     const detail = compactError(error)
