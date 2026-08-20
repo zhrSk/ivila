@@ -1,14 +1,16 @@
-ivila safe production schema patch
+ivila - explicit Vercel Blob OIDC upload fix
 
-Replace/add only these files:
-- package.json
-- collections/Properties.ts
-- lib/property-repository.ts
+Changed files only:
+- app/(frontend)/api/ivila-blob-upload/route.ts
+- app/(frontend)/api/ivila-media-health/route.ts
 - components/admin/IvilaPropertyForm.tsx
-- scripts/ensure-ivila-production-schema.ts
 
-IMPORTANT:
-1) Remove IVILA_BOOTSTRAP_SCHEMA from Vercel (or set it to 0). It is no longer used by prebuild.
-2) Keep IVILA_IMPORT_SPATIAL_OSM=0 unless you explicitly want to re-import OSM reference data.
-3) Do NOT answer "y" to any old Payload db-push prompt that wants to delete ivila_spatial_features.
-4) This patch stores Blob URLs as JSON text in properties.image_urls_json, added safely with ALTER TABLE ... ADD COLUMN IF NOT EXISTS.
+What changed:
+- Reads x-vercel-oidc-token from the actual request and explicitly passes oidcToken + BLOB_STORE_ID to @vercel/blob put/del/list.
+- Keeps SDK request-context fallback when the header is not directly visible.
+- Upload route now returns sanitized Blob error code/detail instead of only BLOB_UPLOAD_FAILED.
+- Admin form shows the useful failure reason.
+
+No new dependency and no schema/database change.
+Do NOT enable IVILA_BOOTSTRAP_SCHEMA.
+Do NOT rerun IVILA_IMPORT_SPATIAL_OSM.

@@ -350,7 +350,7 @@ export default function IvilaPropertyForm() {
       body: formData,
     })
 
-    const result = await response.json().catch(() => null) as null | { url?: string; message?: string }
+    const result = await response.json().catch(() => null) as null | { url?: string; message?: string; code?: string; detail?: string }
     if (response.status === 401) {
       window.location.assign('/ivila-login')
       throw new Error('AUTH_REQUIRED')
@@ -358,9 +358,19 @@ export default function IvilaPropertyForm() {
     if (!response.ok || !result?.url) {
       const message = response.status === 413
         ? 'حجم تصویر بیش از حد مجاز مسیر Upload است.'
-        : result?.message === 'BLOB_STORE_NOT_CONNECTED'
-          ? 'Blob Store به این Deploy متصل نیست.'
-          : 'آپلود تصویر روی Vercel Blob انجام نشد.'
+        : result?.code === 'OIDC_ENVIRONMENT_NOT_ALLOWED'
+          ? 'OIDC برای Environment این Deploy اجازه دسترسی به Blob را ندارد.'
+          : result?.code === 'BLOB_ACCESS_DENIED'
+            ? 'دسترسی OIDC به Blob Store رد شد.'
+            : result?.code === 'BLOB_STORE_NOT_FOUND'
+              ? 'Blob Store پیدا نشد؛ اتصال Store به Project را بررسی کن.'
+              : result?.code === 'BLOB_CREDENTIALS_MISSING'
+                ? 'Credential لازم برای Blob در Runtime پیدا نشد.'
+                : result?.message === 'BLOB_STORE_NOT_CONNECTED'
+                  ? 'Blob Store به این Deploy متصل نیست.'
+                  : result?.detail
+                    ? `آپلود Blob انجام نشد: ${result.detail}`
+                    : 'آپلود تصویر روی Vercel Blob انجام نشد.'
       setImages((current) => current.map((candidate) => candidate.key === item.key
         ? { ...candidate, uploadState: 'error', error: message }
         : candidate))

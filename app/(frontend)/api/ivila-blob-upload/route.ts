@@ -18,10 +18,37 @@ function cleanSegment(value: string) {
     .slice(0, 80) || 'property'
 }
 
+function compactError(error: unknown) {
+  if (!(error instanceof Error)) return 'UNKNOWN_BLOB_ERROR'
+
+  return error.message
+    .replace(/https?:\/\/\S+/gi, '[url]')
+    .replace(/[A-Za-z0-9_-]{40,}/g, '[redacted]')
+    .slice(0, 320)
+}
+
+function classifyBlobError(error: unknown) {
+  const message = error instanceof Error ? error.message : ''
+  if (/environment/i.test(message) && /oidc/i.test(message)) return 'OIDC_ENVIRONMENT_NOT_ALLOWED'
+  if (/access denied|forbidden/i.test(message)) return 'BLOB_ACCESS_DENIED'
+  if (/store does not exist|store not found/i.test(message)) return 'BLOB_STORE_NOT_FOUND'
+  if (/no blob credentials|oidcToken|BLOB_STORE_ID/i.test(message)) return 'BLOB_CREDENTIALS_MISSING'
+  if (/file is too large|file length/i.test(message)) return 'BLOB_FILE_TOO_LARGE'
+  return 'BLOB_UPLOAD_FAILED'
+}
+
 async function authenticated(request: Request) {
   const payload = await getPayload({ config })
   const { user } = await payload.auth({ headers: request.headers })
   return Boolean(user)
+}
+
+function blobAuth(request: Request) {
+  const storeId = process.env.BLOB_STORE_ID?.trim()
+  const oidcToken = request.headers.get('x-vercel-oidc-token')?.trim() || process.env.VERCEL_OIDC_TOKEN?.trim()
+
+  if (!storeId) return { storeId: undefined, oidcToken: undefined }
+  return { storeId, oidcToken: oidcToken || undefined }
 }
 
 export async function POST(request: Request) {
@@ -30,8 +57,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ message: 'AUTH_REQUIRED' }, { status: 401 })
     }
 
-    if (!process.env.BLOB_STORE_ID) {
-      return NextResponse.json({ message: 'BLOB_STORE_NOT_CONNECTED' }, { status: 503 })
+    const auth = blobAuth(request)
+    if (!auth.storeId) {
+      return NextResponse.json({ message: 'BLOB_STORE_NOT_CONNECTED', code: 'BLOB_STORE_ID_MISSING' }, { status: 503 })
     }
 
     const formData = await request.formData()
@@ -54,6 +82,8 @@ export async function POST(request: Request) {
       addRandomSuffix: true,
       contentType: file.type,
       cacheControlMaxAge: 60 * 60 * 24 * 30,
+      storeId: auth.storeId,
+      ...(auth.oidcToken ? { oidcToken: auth.oidcToken } : {}),
     })
 
     return NextResponse.json({
@@ -61,10 +91,13 @@ export async function POST(request: Request) {
       pathname: blob.pathname,
       contentType: blob.contentType,
       size: file.size,
+      auth: auth.oidcToken ? 'explicit-oidc' : 'sdk-context',
     })
   } catch (error) {
-    console.error('[ivila blob] upload failed', error)
-    return NextResponse.json({ message: 'BLOB_UPLOAD_FAILED' }, { status: 500 })
+    const code = classifyBlobError(error)
+    const detail = compactError(error)
+    console.error('[ivila blob] upload failed', { code, detail, error })
+    return NextResponse.json({ message: 'BLOB_UPLOAD_FAILED', code, detail }, { status: 502 })
   }
 }
 
@@ -74,16 +107,25 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ message: 'AUTH_REQUIRED' }, { status: 401 })
     }
 
+    const auth = blobAuth(request)
+    if (!auth.storeId) {
+      return NextResponse.json({ message: 'BLOB_STORE_NOT_CONNECTED', code: 'BLOB_STORE_ID_MISSING' }, { status: 503 })
+    }
+
     const body = await request.json().catch(() => null) as null | { url?: string }
     const url = body?.url?.trim()
     if (!url || !/^https:\/\//i.test(url)) {
       return NextResponse.json({ message: 'BLOB_URL_REQUIRED' }, { status: 400 })
     }
 
-    await del(url)
+    await del(url, {
+      storeId: auth.storeId,
+      ...(auth.oidcToken ? { oidcToken: auth.oidcToken } : {}),
+    })
     return NextResponse.json({ ok: true })
   } catch (error) {
-    console.error('[ivila blob] delete failed', error)
-    return NextResponse.json({ message: 'BLOB_DELETE_FAILED' }, { status: 500 })
+    const detail = compactError(error)
+    console.error('[ivila blob] delete failed', { detail, error })
+    return NextResponse.json({ message: 'BLOB_DELETE_FAILED', detail }, { status: 502 })
   }
 }

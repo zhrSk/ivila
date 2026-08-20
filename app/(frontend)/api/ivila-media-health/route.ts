@@ -10,13 +10,14 @@ function compactError(error: unknown) {
   return error.message
     .replace(/https?:\/\/\S+/gi, '[url]')
     .replace(/[A-Za-z0-9_-]{40,}/g, '[redacted]')
-    .slice(0, 220)
+    .slice(0, 260)
 }
 
 export async function GET(request: Request) {
-  const hasStore = Boolean(process.env.BLOB_STORE_ID)
+  const storeId = process.env.BLOB_STORE_ID?.trim()
+  const oidcToken = request.headers.get('x-vercel-oidc-token')?.trim() || process.env.VERCEL_OIDC_TOKEN?.trim()
 
-  if (!hasStore) {
+  if (!storeId) {
     return NextResponse.json({
       ready: false,
       provider: 'vercel-blob',
@@ -27,25 +28,16 @@ export async function GET(request: Request) {
   }
 
   try {
-    // Do a real, read-only SDK call instead of assuming the OIDC token must
-    // exist in process.env. On Vercel Functions the token can live in the
-    // request context (x-vercel-oidc-token), which @vercel/blob resolves.
-    await list({ limit: 1 })
-
-    const requestOidc = Boolean(request.headers.get('x-vercel-oidc-token'))
-    const buildOrLocalOidc = Boolean(process.env.VERCEL_OIDC_TOKEN)
-    const legacyToken = Boolean(process.env.BLOB_READ_WRITE_TOKEN)
+    await list({
+      limit: 1,
+      storeId,
+      ...(oidcToken ? { oidcToken } : {}),
+    })
 
     return NextResponse.json({
       ready: true,
       provider: 'vercel-blob',
-      auth: requestOidc
-        ? 'oidc-request'
-        : buildOrLocalOidc
-          ? 'oidc-env'
-          : legacyToken
-            ? 'legacy-token'
-            : 'sdk-context',
+      auth: oidcToken ? 'explicit-oidc' : 'sdk-context',
       storeConnected: true,
     })
   } catch (error) {
