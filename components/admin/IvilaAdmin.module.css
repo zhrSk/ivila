@@ -880,3 +880,36 @@
 @media (max-width: 390px) {
   .imageSourceActions { grid-template-columns: 1fr; }
 }
+
+/* Team account management */
+.teamIdentity { min-width: 0; display: grid; gap: 2px; }
+.teamIdentity strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.teamIdentity small { color: #7c8c86; font-size: 8px; }
+.teamItemDisabled { opacity: .68; background: #f7f8f8; }
+.teamActions { display: flex; align-items: center; gap: 6px; }
+.teamActions button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 32px; padding: 0 9px; border-radius: 9px; border: 1px solid #e1e8e5; background: #fff; color: #52635d; font: inherit; font-size: 9px; font-weight: 800; cursor: pointer; }
+.teamActions button:disabled { opacity: .5; cursor: wait; }
+.pauseAgent { color: #a66d17 !important; background: #fff8eb !important; border-color: #f0dfbf !important; }
+.resumeAgent { color: #08735f !important; background: #eaf8f2 !important; border-color: #cfeadd !important; }
+.deleteAgent { color: #a9433b !important; background: #fff3f1 !important; border-color: #f0d7d2 !important; }
+.teamLoading { display: grid; gap: 8px; }
+.teamLoading span { display: block; height: 62px; border-radius: 13px; background: linear-gradient(90deg,#f1f4f3 25%,#fafbfb 50%,#f1f4f3 75%); background-size: 200% 100%; animation: teamShimmer 1.2s infinite linear; }
+@keyframes teamShimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+
+@media (max-width: 720px) {
+  /* backdrop-filter on the sticky parent was trapping the fixed nav inside the header. */
+  .sidebar {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    filter: none !important;
+    transform: none !important;
+    contain: none !important;
+    height: 56px;
+    min-height: 56px;
+    padding: 7px 10px;
+  }
+  .nav { position: fixed !important; }
+  .teamItem { grid-template-columns: 36px minmax(0,1fr); align-items: start; }
+  .teamActions { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); width: 100%; }
+  .teamActions button { width: 100%; min-width: 0; }
+}

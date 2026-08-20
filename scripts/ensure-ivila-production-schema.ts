@@ -41,6 +41,7 @@ try {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS phone TEXT;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS username TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active BOOLEAN;
     ALTER TABLE users ALTER COLUMN email DROP NOT NULL;
 
     UPDATE users
@@ -56,6 +57,8 @@ try {
       WHERE username IS NULL AND phone IS NOT NULL AND phone <> '';
 
     UPDATE users SET phone = username WHERE (phone IS NULL OR phone = '') AND username IS NOT NULL;
+    UPDATE users SET is_active = TRUE WHERE is_active IS NULL;
+    ALTER TABLE users ALTER COLUMN is_active SET DEFAULT TRUE;
 
     UPDATE users
       SET role = 'admin'
@@ -108,6 +111,7 @@ try {
     CREATE INDEX IF NOT EXISTS properties_created_by_user_id_idx ON properties(created_by_user_id);
     CREATE INDEX IF NOT EXISTS properties_review_status_idx ON properties(review_status);
     CREATE INDEX IF NOT EXISTS users_role_idx ON users(role);
+    CREATE INDEX IF NOT EXISTS users_role_active_idx ON users(role, is_active);
     CREATE UNIQUE INDEX IF NOT EXISTS users_username_unique_idx ON users(username) WHERE username IS NOT NULL;
     CREATE UNIQUE INDEX IF NOT EXISTS users_phone_unique_idx ON users(phone) WHERE phone IS NOT NULL AND phone <> '';
 

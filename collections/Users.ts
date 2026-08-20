@@ -5,6 +5,10 @@ function roleOf(user: unknown) {
   return (user as { role?: string } | null | undefined)?.role
 }
 
+function isActiveUser(user: unknown) {
+  return (user as { isActive?: boolean } | null | undefined)?.isActive !== false
+}
+
 export const Users: CollectionConfig = {
   slug: 'users',
   labels: {
@@ -26,17 +30,23 @@ export const Users: CollectionConfig = {
     create: ({ req }) => roleOf(req.user) === 'admin',
     read: ({ req }) => {
       if (roleOf(req.user) === 'admin') return true
-      if (!req.user) return false
+      if (!req.user || !isActiveUser(req.user)) return false
       return { id: { equals: req.user.id } }
     },
     update: ({ req }) => {
       if (roleOf(req.user) === 'admin') return true
-      if (!req.user) return false
+      if (!req.user || !isActiveUser(req.user)) return false
       return { id: { equals: req.user.id } }
     },
     delete: ({ req }) => roleOf(req.user) === 'admin',
   },
   hooks: {
+    beforeLogin: [
+      ({ user }: any) => {
+        if (user?.isActive === false) throw new Error('این حساب توسط ادمین غیرفعال شده است.')
+        return user
+      },
+    ],
     beforeChange: [
       ({ data }) => {
         const phone = normalizeIranPhone(data?.phone)
@@ -79,6 +89,18 @@ export const Users: CollectionConfig = {
       ],
       access: {
         update: ({ req }) => roleOf(req.user) === 'admin',
+      },
+    },
+    {
+      name: 'isActive',
+      type: 'checkbox',
+      label: 'حساب فعال',
+      defaultValue: true,
+      access: {
+        update: ({ req }) => roleOf(req.user) === 'admin',
+      },
+      admin: {
+        description: 'اگر خاموش شود، مشاور دیگر اجازه ورود و استفاده از پنل را ندارد.',
       },
     },
     {

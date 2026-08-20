@@ -9,6 +9,10 @@ function roleOf(user: unknown) {
   return (user as { role?: string } | null | undefined)?.role
 }
 
+function isActiveUser(user: unknown) {
+  return (user as { isActive?: boolean } | null | undefined)?.isActive !== false
+}
+
 function userId(user: unknown) {
   const value = (user as { id?: string | number } | null | undefined)?.id
   return value === undefined || value === null ? '' : String(value)
@@ -71,18 +75,19 @@ export const Properties: CollectionConfig = {
   access: {
     read: ({ req }) => {
       if (!req.user) return publishedOnlyWhere()
+      if (!isActiveUser(req.user)) return false
       if (roleOf(req.user) === 'admin') return true
       return agentReadableWhere(userId(req.user))
     },
-    create: ({ req }) => Boolean(req.user),
+    create: ({ req }) => Boolean(req.user && isActiveUser(req.user)),
     update: ({ req }) => {
+      if (!req.user || !isActiveUser(req.user)) return false
       if (roleOf(req.user) === 'admin') return true
-      if (!req.user) return false
       return agentOwnDraftWhere(userId(req.user))
     },
     delete: ({ req }) => {
+      if (!req.user || !isActiveUser(req.user)) return false
       if (roleOf(req.user) === 'admin') return true
-      if (!req.user) return false
       return agentOwnDraftWhere(userId(req.user))
     },
   },
