@@ -11,6 +11,7 @@ import {
   Home,
   LogOut,
   MapPin,
+  MessageSquareWarning,
   Navigation,
   Pencil,
   Phone,
@@ -24,7 +25,8 @@ import styles from './IvilaAdmin.module.css'
 
 type PropertyStatus = 'draft' | 'published' | 'sold' | 'rented' | 'archived'
 type UserRole = 'admin' | 'agent'
-type ViewMode = 'all' | 'mine' | 'active'
+type ViewMode = 'all' | 'mine' | 'active' | 'review'
+type ReviewStatus = 'pending' | 'changes_requested' | 'approved' | 'rejected'
 
 type PropertyDoc = {
   id: string | number
@@ -40,13 +42,17 @@ type PropertyDoc = {
   depositToman?: number
   monthlyRentToman?: number
   status?: PropertyStatus
-  createdByUserId?: string
+  createdByUserId?: string | number
   ownerPhone?: string
   ownerName?: string
   ownerNotes?: string
   coordinates?: [number, number]
   updatedAt?: string
+  reviewStatus?: ReviewStatus
+  reviewNote?: string
+  reviewedAt?: string
 }
+
 
 type UserInfo = {
   id?: string | number
@@ -58,11 +64,18 @@ type UserInfo = {
 
 type MeResponse = { user?: UserInfo | null }
 type PropertiesResponse = { docs?: PropertyDoc[]; totalDocs?: number }
+type UsersResponse = { docs?: UserInfo[]; totalDocs?: number }
 
 const statusLabels: Record<PropertyStatus, string> = {
   draft: 'پیش‌نویس', published: 'منتشر شده', sold: 'فروخته شده', rented: 'اجاره داده شده', archived: 'آرشیو',
 }
 const typeLabels: Record<string, string> = { villa: 'ویلا', land: 'زمین', apartment: 'آپارتمان' }
+const reviewLabels: Record<ReviewStatus, string> = {
+  pending: 'در انتظار بررسی',
+  changes_requested: 'نیاز به اصلاح',
+  approved: 'تأیید شده',
+  rejected: 'رد شده',
+}
 
 function faNumber(value: number | string | undefined) {
   if (value === undefined || value === null || value === '') return '—'
@@ -96,6 +109,8 @@ export default function IvilaAdminDashboard() {
   const [query, setQuery] = useState('')
   const [status, setStatus] = useState<'all' | PropertyStatus>('all')
   const [viewMode, setViewMode] = useState<ViewMode>('all')
+  const [teamUsers, setTeamUsers] = useState<UserInfo[]>([])
+  const [agentFilter, setAgentFilter] = useState('all')
 
   useEffect(() => {
     let alive = true
@@ -111,14 +126,40 @@ export default function IvilaAdminDashboard() {
         const data = await propertiesResponse.json() as PropertiesResponse
         if (!alive) return
         const current = me.user || null
+        let users: UserInfo[] = []
+        if (current?.role === 'admin') {
+          const usersResponse = await fetch('/api/users?limit=200&sort=name&depth=0', {
+            credentials: 'include',
+            cache: 'no-store',
+          })
+          if (usersResponse.ok) {
+            const usersData = await usersResponse.json() as UsersResponse
+            users = usersData.docs || []
+          }
+        }
+        if (!alive) return
         setUser(current)
         setViewMode(current?.role === 'agent' ? 'mine' : 'all')
         setProperties(data.docs || [])
+        setTeamUsers(users)
       } catch { if (alive) setError('دریافت اطلاعات پنل انجام نشد. یک‌بار صفحه را Refresh کن.') }
       finally { if (alive) setLoading(false) }
     }
     void load(); return () => { alive = false }
   }, [])
+
+  const creatorById = useMemo(() => {
+    const map = new Map<string, UserInfo>()
+    teamUsers.forEach((member) => {
+      if (member.id !== undefined && member.id !== null) map.set(String(member.id), member)
+    })
+    return map
+  }, [teamUsers])
+
+  const agents = useMemo(
+    () => teamUsers.filter((member) => member.role === 'agent'),
+    [teamUsers],
+  )
 
   const counts = useMemo(() => {
     const value = { published: 0, draft: 0, sold: 0, rented: 0, archived: 0 }
@@ -126,18 +167,39 @@ export default function IvilaAdminDashboard() {
     return value
   }, [properties])
 
+  const pendingReviewCount = useMemo(() => properties.filter((property) => {
+    if (property.status !== 'draft') return false
+    const creator = creatorById.get(String(property.createdByUserId || ''))
+    return creator?.role === 'agent' && (!property.reviewStatus || property.reviewStatus === 'pending')
+  }).length, [properties, creatorById])
+
   const filtered = useMemo(() => {
     const normalized = query.trim().toLowerCase()
     const myId = String(user?.id ?? '')
     return properties.filter((property) => {
-      if (viewMode === 'mine' && String(property.createdByUserId || '') !== myId) return false
+      const creatorId = String(property.createdByUserId || '')
+      if (viewMode === 'mine' && creatorId !== myId) return false
       if (viewMode === 'active' && property.status !== 'published') return false
+      if (viewMode === 'review') {
+        const creator = creatorById.get(creatorId)
+        if (property.status !== 'draft' || creator?.role !== 'agent' || (property.reviewStatus && property.reviewStatus !== 'pending')) return false
+      }
       if (status !== 'all' && property.status !== status) return false
+      if (agentFilter !== 'all' && creatorId !== agentFilter) return false
       if (!normalized) return true
-      return [property.code, property.title, property.locationText, property.type, property.ownerPhone]
-        .filter(Boolean).some((item) => String(item).toLowerCase().includes(normalized))
+      const creator = creatorById.get(creatorId)
+      return [
+        property.code,
+        property.title,
+        property.locationText,
+        property.type,
+        property.ownerName,
+        property.ownerPhone,
+        creator?.name,
+        creator?.phone,
+      ].filter(Boolean).some((item) => String(item).toLowerCase().includes(normalized))
     })
-  }, [properties, query, status, viewMode, user?.id])
+  }, [properties, query, status, viewMode, user?.id, agentFilter, creatorById])
 
   const isAdmin = user?.role === 'admin'
 
@@ -168,7 +230,7 @@ export default function IvilaAdminDashboard() {
         <section className={styles.statsGrid}>
           <article className={styles.statCard}><div className={`${styles.statIcon} ${styles.seaIcon}`}><Waves size={21}/></div><div><span>فایل‌های قابل مشاهده</span><strong>{loading ? '—' : faNumber(properties.length)}</strong></div></article>
           <article className={styles.statCard}><div className={`${styles.statIcon} ${styles.greenIcon}`}><CheckCircle2 size={21}/></div><div><span>فعال</span><strong>{loading ? '—' : faNumber(counts.published)}</strong></div></article>
-          <article className={styles.statCard}><div className={`${styles.statIcon} ${styles.orangeIcon}`}><Clock3 size={21}/></div><div><span>پیش‌نویس</span><strong>{loading ? '—' : faNumber(counts.draft)}</strong></div></article>
+          <article className={styles.statCard}><div className={`${styles.statIcon} ${styles.orangeIcon}`}><Clock3 size={21}/></div><div><span>{isAdmin ? 'منتظر بررسی' : 'پیش‌نویس'}</span><strong>{loading ? '—' : faNumber(isAdmin ? pendingReviewCount : counts.draft)}</strong></div></article>
           <article className={styles.statCard}><div className={`${styles.statIcon} ${styles.grayIcon}`}><Archive size={21}/></div><div><span>مختومه</span><strong>{loading ? '—' : faNumber(counts.sold + counts.rented + counts.archived)}</strong></div></article>
         </section>
 
@@ -176,14 +238,16 @@ export default function IvilaAdminDashboard() {
           <div className={styles.panelHeader}>
             <div><h2>فایل‌ها</h2><span>{faNumber(filtered.length)} مورد در این نمایش</span></div>
             <div className={styles.filters}>
-              <label className={styles.searchBox}><Search size={18}/><input value={query} onChange={(e)=>setQuery(e.target.value)} placeholder="کد، عنوان، مالک یا محدوده..."/></label>
+              <label className={styles.searchBox}><Search size={18}/><input value={query} onChange={(e)=>setQuery(e.target.value)} placeholder={isAdmin ? 'کد، عنوان، مالک، محدوده یا مشاور...' : 'کد، عنوان، مالک یا محدوده...'}/></label>
               <select value={status} onChange={(e)=>setStatus(e.target.value as typeof status)}><option value="all">همه وضعیت‌ها</option><option value="published">منتشر شده</option><option value="draft">پیش‌نویس</option><option value="sold">فروخته شده</option><option value="rented">اجاره داده شده</option><option value="archived">آرشیو</option></select>
+              {isAdmin && <select value={agentFilter} onChange={(e) => { setAgentFilter(e.target.value); if (e.target.value !== 'all') setViewMode('all') }} aria-label="فیلتر مشاور"><option value="all">همه مشاورها</option>{agents.map((agent) => <option key={String(agent.id)} value={String(agent.id)}>{agent.name || agent.phone || 'مشاور بدون نام'}</option>)}</select>}
             </div>
           </div>
 
           <div className={styles.viewTabs}>
             {isAdmin && <button className={viewMode === 'all' ? styles.viewTabActive : ''} onClick={()=>setViewMode('all')}>همه فایل‌ها</button>}
-            <button className={viewMode === 'mine' ? styles.viewTabActive : ''} onClick={()=>setViewMode('mine')}>فایل‌های من</button>
+            {isAdmin && <button className={viewMode === 'review' ? styles.viewTabActive : ''} onClick={()=>{ setViewMode('review'); setStatus('all'); setAgentFilter('all') }}>صف بررسی <span className={styles.tabCount}>{faNumber(pendingReviewCount)}</span></button>}
+            <button className={viewMode === 'mine' ? styles.viewTabActive : ''} onClick={()=>{ setViewMode('mine'); setAgentFilter('all') }}>فایل‌های من</button>
             <button className={viewMode === 'active' ? styles.viewTabActive : ''} onClick={()=>setViewMode('active')}>فایل‌های فعال</button>
           </div>
 
@@ -193,11 +257,14 @@ export default function IvilaAdminDashboard() {
             {!loading && filtered.map((property) => {
               const canEdit = isAdmin || (String(property.createdByUserId || '') === String(user?.id || '') && property.status === 'draft')
               const gmap = mapsUrl(property); const neshan = neshanUrl(property)
+              const creator = creatorById.get(String(property.createdByUserId || ''))
               return <article className={styles.internalPropertyCard} key={property.id}>
                 <div className={styles.internalPropertyTop}>
                   <div><span className={styles.code}>{property.code || 'بدون کد'}</span><h3>{property.title || 'بدون عنوان'}</h3><small>{typeLabels[property.type || ''] || property.type || 'ملک'} · {property.deal === 'rent' ? 'اجاره' : 'فروش'}</small></div>
                   <span className={`${styles.statusBadge} ${styles[`status_${property.status || 'draft'}`]}`}>{statusLabels[property.status || 'draft']}</span>
                 </div>
+                {isAdmin && <div className={styles.creatorLine}><UserRound size={15}/><span>ثبت‌کننده:</span><strong>{creator?.name || (property.createdByUserId ? 'کاربر حذف‌شده / نامشخص' : 'فایل قدیمی بدون ثبت‌کننده')}</strong>{creator?.phone && <em dir="ltr">{creator.phone}</em>}</div>}
+                {(property.reviewStatus || creator?.role === 'agent') && <div className={`${styles.reviewStrip} ${styles[`review_${property.reviewStatus || 'pending'}`]}`}><div><MessageSquareWarning size={15}/><strong>{reviewLabels[property.reviewStatus || 'pending']}</strong></div>{property.reviewNote && <p>{property.reviewNote}</p>}</div>}
                 <div className={styles.internalFacts}>
                   <span><MapPin size={15}/>{property.locationText || '—'}</span>
                   <span><CircleDollarSign size={15}/>{propertyPrice(property)}</span>

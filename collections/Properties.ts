@@ -96,8 +96,28 @@ export const Properties: CollectionConfig = {
           else data.createdByUserId = originalDoc.createdByUserId
         }
         if (role === 'agent') {
+          // Consultant submissions always return to the review queue.
           data.status = 'draft'
           data.featured = false
+          data.reviewStatus = 'pending'
+          data.reviewNote = originalDoc?.reviewNote || ''
+          data.reviewedByUserId = originalDoc?.reviewedByUserId || ''
+          data.reviewedAt = originalDoc?.reviewedAt || null
+        } else if (role === 'admin') {
+          const requestedReviewStatus = String(data?.reviewStatus || originalDoc?.reviewStatus || '')
+          if (data?.status === 'published') {
+            data.reviewStatus = 'approved'
+            data.reviewedByUserId = currentUserId
+            data.reviewedAt = new Date().toISOString()
+          } else if (requestedReviewStatus === 'changes_requested' || requestedReviewStatus === 'rejected') {
+            data.status = 'draft'
+            data.featured = false
+            data.reviewStatus = requestedReviewStatus
+            data.reviewedByUserId = currentUserId
+            data.reviewedAt = new Date().toISOString()
+          } else if (!data?.reviewStatus && originalDoc?.reviewStatus) {
+            data.reviewStatus = originalDoc.reviewStatus
+          }
         }
 
         const coordinates = data?.coordinates ?? originalDoc?.coordinates
@@ -467,6 +487,49 @@ export const Properties: CollectionConfig = {
               label: 'ثبت‌کننده',
               admin: { hidden: true },
               index: true,
+              access: { read: ({ req }) => Boolean(req.user) },
+            },
+            {
+              type: 'row',
+              fields: [
+                {
+                  name: 'reviewStatus',
+                  type: 'select',
+                  label: 'وضعیت بررسی',
+                  index: true,
+                  options: [
+                    { label: 'در انتظار بررسی', value: 'pending' },
+                    { label: 'نیاز به اصلاح', value: 'changes_requested' },
+                    { label: 'تأیید شده', value: 'approved' },
+                    { label: 'رد شده', value: 'rejected' },
+                  ],
+                  access: { read: ({ req }) => Boolean(req.user) },
+                  admin: { width: '50%' },
+                },
+                {
+                  name: 'reviewedAt',
+                  type: 'date',
+                  label: 'زمان آخرین بررسی',
+                  access: { read: ({ req }) => Boolean(req.user) },
+                  admin: { width: '50%', readOnly: true },
+                },
+              ],
+            },
+            {
+              name: 'reviewNote',
+              type: 'textarea',
+              label: 'یادداشت بررسی برای مشاور',
+              validate: (value, { data, req }) =>
+                roleOf(req.user) === 'admin' && ['changes_requested', 'rejected'].includes(String(data?.reviewStatus || '')) && !hasText(value)
+                  ? 'برای نیاز به اصلاح یا رد فایل، توضیح ادمین را وارد کن.'
+                  : true,
+              access: { read: ({ req }) => Boolean(req.user) },
+            },
+            {
+              name: 'reviewedByUserId',
+              type: 'text',
+              label: 'بررسی‌کننده',
+              admin: { hidden: true },
               access: { read: ({ req }) => Boolean(req.user) },
             },
             {

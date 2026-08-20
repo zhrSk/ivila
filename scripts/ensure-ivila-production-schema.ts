@@ -74,6 +74,24 @@ try {
     ALTER TABLE properties ADD COLUMN IF NOT EXISTS location_source TEXT;
     ALTER TABLE properties ADD COLUMN IF NOT EXISTS location_accuracy_m DOUBLE PRECISION;
     ALTER TABLE properties ADD COLUMN IF NOT EXISTS location_captured_at TIMESTAMPTZ;
+    ALTER TABLE properties ADD COLUMN IF NOT EXISTS review_status TEXT;
+    ALTER TABLE properties ADD COLUMN IF NOT EXISTS review_note TEXT;
+    ALTER TABLE properties ADD COLUMN IF NOT EXISTS reviewed_by_user_id TEXT;
+    ALTER TABLE properties ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ;
+
+    -- Existing consultant drafts enter the review queue once this workflow is enabled.
+    UPDATE properties p
+      SET review_status = 'pending'
+      FROM users u
+      WHERE p.review_status IS NULL
+        AND p.status = 'draft'
+        AND p.created_by_user_id = u.id::text
+        AND u.role = 'agent';
+
+    UPDATE properties
+      SET review_status = 'approved'
+      WHERE review_status IS NULL
+        AND status IN ('published', 'sold', 'rented');
 
     -- Consultant drafts intentionally allow incomplete commercial data.
     -- Required minimum is enforced by Payload validation: area + coordinates + owner + photo.
@@ -88,6 +106,7 @@ try {
     ALTER TABLE properties ALTER COLUMN location_text DROP NOT NULL;
 
     CREATE INDEX IF NOT EXISTS properties_created_by_user_id_idx ON properties(created_by_user_id);
+    CREATE INDEX IF NOT EXISTS properties_review_status_idx ON properties(review_status);
     CREATE INDEX IF NOT EXISTS users_role_idx ON users(role);
     CREATE UNIQUE INDEX IF NOT EXISTS users_username_unique_idx ON users(username) WHERE username IS NOT NULL;
     CREATE UNIQUE INDEX IF NOT EXISTS users_phone_unique_idx ON users(phone) WHERE phone IS NOT NULL AND phone <> '';

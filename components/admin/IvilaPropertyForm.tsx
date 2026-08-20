@@ -26,6 +26,7 @@ type Lifestyle = '' | 'coast' | 'forest' | 'village' | 'urban'
 type DocumentStatus = '' | 'single-page' | 'council' | 'contract' | 'in-progress'
 type PublishStatus = 'draft' | 'published' | 'sold' | 'rented' | 'archived'
 type UserRole = 'admin' | 'agent'
+type ReviewStatus = 'pending' | 'changes_requested' | 'approved' | 'rejected'
 type BlobStatus = 'loading' | 'ready' | 'missing' | 'error'
 type UploadState = 'ready' | 'uploading' | 'uploaded' | 'error'
 
@@ -151,6 +152,10 @@ export default function IvilaPropertyForm({ propertyId }: { propertyId?: string 
   const [amenities, setAmenities] = useState<string[]>([])
   const [customAmenity, setCustomAmenity] = useState('')
   const [userRole, setUserRole] = useState<UserRole>('agent')
+  const [currentUserId, setCurrentUserId] = useState('')
+  const [createdByUserId, setCreatedByUserId] = useState('')
+  const [reviewStatus, setReviewStatus] = useState<ReviewStatus>('pending')
+  const [reviewNote, setReviewNote] = useState('')
   const [loadingExisting, setLoadingExisting] = useState(Boolean(propertyId))
   const [locationSource, setLocationSource] = useState<'map' | 'gps'>('map')
   const [locationAccuracyM, setLocationAccuracyM] = useState<number | null>(null)
@@ -240,6 +245,7 @@ export default function IvilaPropertyForm({ propertyId }: { propertyId?: string 
         const result = await response.json().catch(() => null) as any
         if (!disposed && result?.user) {
           setUserRole(result.user.role === 'admin' ? 'admin' : 'agent')
+          setCurrentUserId(result.user.id == null ? '' : String(result.user.id))
           if (result.user.role !== 'admin') setStatus('draft')
         }
       })
@@ -275,6 +281,9 @@ export default function IvilaPropertyForm({ propertyId }: { propertyId?: string 
           setMonthlyRent(doc.monthlyRentToman == null ? '' : String(doc.monthlyRentToman))
           setDescription(doc.description || '')
           setStatus(['draft','published','sold','rented','archived'].includes(doc.status) ? doc.status as PublishStatus : 'draft')
+          setReviewStatus(['pending','changes_requested','approved','rejected'].includes(doc.reviewStatus) ? doc.reviewStatus as ReviewStatus : 'pending')
+          setReviewNote(doc.reviewNote || '')
+          setCreatedByUserId(doc.createdByUserId == null ? '' : String(doc.createdByUserId))
           setAmenities(Array.isArray(doc.amenities) ? doc.amenities.filter((x: unknown): x is string => typeof x === 'string') : [])
           let urls: string[] = []
           try { const parsed = JSON.parse(doc.imageUrlsJson || '[]'); if (Array.isArray(parsed)) urls = parsed.filter((x): x is string => typeof x === 'string') } catch {}
@@ -636,6 +645,11 @@ export default function IvilaPropertyForm({ propertyId }: { propertyId?: string 
       return
     }
 
+    if (userRole === 'admin' && (reviewStatus === 'changes_requested' || reviewStatus === 'rejected') && !reviewNote.trim()) {
+      setError(reviewStatus === 'changes_requested' ? 'برای درخواست اصلاح، توضیحی برای مشاور بنویس.' : 'برای رد فایل، دلیل را برای مشاور بنویس.')
+      return
+    }
+
     if (images.length > 0 && blobStatus !== 'ready') {
       setError('Vercel Blob/OIDC آماده نیست و تصاویر قابل ذخیره دائمی نیستند.')
       return
@@ -679,7 +693,9 @@ export default function IvilaPropertyForm({ propertyId }: { propertyId?: string 
         depositToman: deal === 'rent' ? numeric(deposit) : undefined,
         monthlyRentToman: deal === 'rent' ? numeric(monthlyRent) : undefined,
         imageUrlsJson: JSON.stringify(imageUrls),
-        status: userRole === 'agent' ? 'draft' : status,
+        status: userRole === 'agent' ? 'draft' : ((reviewStatus === 'changes_requested' || reviewStatus === 'rejected') ? 'draft' : status),
+        reviewStatus: userRole === 'admin' ? (status === 'published' ? 'approved' : reviewStatus) : undefined,
+        reviewNote: userRole === 'admin' ? reviewNote.trim() : undefined,
         featured: false,
       }
 
@@ -736,13 +752,20 @@ export default function IvilaPropertyForm({ propertyId }: { propertyId?: string 
           <div>
             <span className={styles.eyebrow}>{propertyId ? 'ویرایش فایل' : 'فایل جدید'}</span>
             <h1>{propertyId ? 'ویرایش ملک در ivila' : 'ثبت ملک در ivila'}</h1>
-            <p>{userRole === 'agent' ? 'برای مشاور فقط لوکیشن، عکس، متراژ و اطلاعات مالک اجباری است؛ بقیه را ادمین بعداً تکمیل می‌کند.' : 'اطلاعات اصلی، تصاویر و محل دقیق ملک را در یک مرحله ثبت کن.'}</p>
+            <p>{userRole === 'agent' ? 'برای مشاور فقط لوکیشن، حداقل یک عکس، متراژ، نام و شماره مالک اجباری است؛ توضیحات و همه اطلاعات دیگر اختیاری‌اند.' : 'اطلاعات اصلی، تصاویر و محل دقیق ملک را در یک مرحله ثبت کن.'}</p>
           </div>
           <FilePlus2 size={42} />
         </section>
 
         {error && <div className={styles.errorBox}>{error}</div>}
         {success && <div className={styles.successBox}><Check size={18} /> فایل با موفقیت ذخیره شد.</div>}
+        {userRole === 'agent' && propertyId && (reviewStatus === 'changes_requested' || reviewStatus === 'rejected') && (
+          <div className={`${styles.reviewFeedback} ${reviewStatus === 'rejected' ? styles.reviewFeedbackRejected : ''}`}>
+            <strong>{reviewStatus === 'changes_requested' ? 'ادمین برای این فایل اصلاح خواسته است' : 'این فایل توسط ادمین رد شده است'}</strong>
+            <p>{reviewNote || 'توضیحی ثبت نشده است.'}</p>
+            {reviewStatus === 'changes_requested' && <span>بعد از اصلاح و ذخیره مجدد، فایل دوباره وارد صف بررسی می‌شود.</span>}
+          </div>
+        )}
 
         <div className={styles.formGrid}>
           <section className={styles.formCard}>
@@ -776,12 +799,27 @@ export default function IvilaPropertyForm({ propertyId }: { propertyId?: string 
                 <div className={`${styles.agentDraftNotice} ${styles.span2}`}>قیمت اختیاری است و بعداً توسط ادمین تکمیل می‌شود.</div>
               )}
               {userRole === 'admin' ? (
-                <label className={`${styles.field} ${styles.span2}`}><span>وضعیت فایل</span><select value={status} onChange={(e) => setStatus(e.target.value as PublishStatus)}><option value="draft">پیش‌نویس</option><option value="published">منتشر شده</option><option value="sold">فروخته شده</option><option value="rented">اجاره داده شده</option><option value="archived">آرشیو</option></select></label>
+                <label className={`${styles.field} ${styles.span2}`}><span>وضعیت فایل</span><select value={status} onChange={(e) => { const next = e.target.value as PublishStatus; setStatus(next); if (next === 'published') setReviewStatus('approved') }}><option value="draft">پیش‌نویس</option><option value="published">منتشر شده</option><option value="sold">فروخته شده</option><option value="rented">اجاره داده شده</option><option value="archived">آرشیو</option></select></label>
               ) : (
                 <div className={`${styles.agentDraftNotice} ${styles.span2}`}>فایل‌های مشاور فقط به‌صورت پیش‌نویس ذخیره می‌شوند و بعد از بررسی ادمین اصلی منتشر خواهند شد.</div>
               )}
             </div>
           </section>
+
+          {userRole === 'admin' && propertyId && createdByUserId && createdByUserId !== currentUserId && (
+            <section className={`${styles.formCard} ${styles.fullCard} ${styles.reviewCard}`}>
+              <div className={styles.sectionTitle}><span>✓</span><div><h2>بررسی فایل مشاور</h2><p>نتیجه بررسی را ثبت کن؛ مشاور این وضعیت و توضیح را در پنل خودش می‌بیند.</p></div></div>
+              <div className={styles.reviewAdminGrid}>
+                <label className={styles.field}><span>نتیجه بررسی</span><select value={reviewStatus} onChange={(e) => { const next = e.target.value as ReviewStatus; setReviewStatus(next); if (next === 'changes_requested' || next === 'rejected') setStatus('draft'); if (next === 'approved') setStatus('published') }}><option value="pending">در انتظار بررسی</option><option value="changes_requested">نیاز به اصلاح</option><option value="approved">تأیید و انتشار</option><option value="rejected">رد فایل</option></select></label>
+                <label className={styles.field}><span>توضیح برای مشاور {reviewStatus === 'pending' || reviewStatus === 'approved' ? <small>اختیاری</small> : <b>اجباری</b>}</span><textarea value={reviewNote} onChange={(e) => setReviewNote(e.target.value)} rows={4} placeholder="مثلاً عکس سند اضافه شود، قیمت اصلاح شود یا دلیل رد فایل..." /></label>
+              </div>
+              <div className={styles.reviewQuickActions}>
+                <button type="button" className={styles.reviewApprove} onClick={() => { setReviewStatus('approved'); setStatus('published') }}>تأیید و انتشار</button>
+                <button type="button" className={styles.reviewChanges} onClick={() => { setReviewStatus('changes_requested'); setStatus('draft') }}>نیاز به اصلاح</button>
+                <button type="button" className={styles.reviewReject} onClick={() => { setReviewStatus('rejected'); setStatus('draft') }}>رد فایل</button>
+              </div>
+            </section>
+          )}
 
           <section className={`${styles.formCard} ${styles.mapCard}`}>
             <div className={styles.sectionTitle}><span>۳</span><div><h2>موقعیت ملک</h2><p>روی نقطه دقیق ملک در نقشه کلیک کن.</p></div></div>
@@ -919,7 +957,7 @@ export default function IvilaPropertyForm({ propertyId }: { propertyId?: string 
           </section>
 
           <section className={`${styles.formCard} ${styles.fullCard}`}>
-            <div className={styles.sectionTitle}><span>۶</span><div><h2>توضیحات</h2><p>نکته‌هایی که فروش فایل را راحت‌تر می‌کنند.</p></div></div>
+            <div className={styles.sectionTitle}><span>۶</span><div><h2>توضیحات</h2><p>{userRole === 'agent' ? 'برای مشاور اختیاری است و ادمین می‌تواند بعداً تکمیلش کند.' : 'نکته‌هایی که فروش فایل را راحت‌تر می‌کنند.'}</p></div></div>
             <label className={styles.field}><span>توضیحات فایل <small>اختیاری برای مشاور</small></span><textarea required={userRole === 'admin' && status === 'published'} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="ویژگی‌های مهم ملک، دسترسی، وضعیت بنا و..." rows={6} /></label>
           </section>
         </div>
