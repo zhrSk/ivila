@@ -3,11 +3,13 @@
 import {
   ArrowRight,
   Check,
+  Camera,
   ChevronLeft,
   ChevronRight,
   FilePlus2,
   GripVertical,
   ImagePlus,
+  Images,
   LocateFixed,
   MapPin,
   Save,
@@ -38,13 +40,23 @@ type ImageDraft = {
   uploadState: UploadState
   blobUrl?: string
   error?: string
+  width?: number
+  height?: number
+  originalBytes?: number
+}
+
+type PreparedImage = {
+  file: File
+  width: number
+  height: number
+  originalBytes: number
 }
 
 const DEFAULT_AMENITIES = ['پارکینگ','آسانسور','انباری','بالکن','تراس','حیاط','حیاط خصوصی','استخر','لابی','نگهبانی','اتاق مستر','مبله','دسترسی آسفالت','نورگیری عالی','آب و برق مستقل']
 
 const MAX_IMAGES = 30
 const MAX_UPLOAD_BYTES = 3_800_000
-const SUPPORTED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp'])
+const MAX_IMAGE_SIDE = 2400
 
 function numeric(value: string) {
   if (!value.trim()) return undefined
@@ -66,63 +78,137 @@ function formatBytes(bytes?: number) {
   return `${(bytes / (1024 * 1024)).toLocaleString('fa-IR', { maximumFractionDigits: 1 })} مگابایت`
 }
 
-async function loadImage(file: File) {
+function imageDraftMeta(item: ImageDraft) {
+  const dimensions = item.width && item.height ? `${item.width.toLocaleString('fa-IR')}×${item.height.toLocaleString('fa-IR')}` : ''
+  if (!item.file) return dimensions || 'ذخیره‌شده'
+  const optimized = formatBytes(item.file.size)
+  const sizeChange = item.originalBytes && item.originalBytes > item.file.size
+    ? `${formatBytes(item.originalBytes)} ← ${optimized}`
+    : optimized
+  return [dimensions, sizeChange].filter(Boolean).join(' · ')
+}
+
+type DecodedImage = {
+  source: CanvasImageSource
+  width: number
+  height: number
+  cleanup: () => void
+}
+
+async function decodeOrientedImage(file: File): Promise<DecodedImage> {
+  // Modern browsers apply EXIF orientation at decode time. createImageBitmap makes
+  // that behavior explicit; the HTMLImageElement fallback is used on older Safari.
+  if (typeof createImageBitmap === 'function') {
+    try {
+      const bitmap = await (createImageBitmap as any)(file, { imageOrientation: 'from-image' }) as ImageBitmap
+      return {
+        source: bitmap,
+        width: bitmap.width,
+        height: bitmap.height,
+        cleanup: () => bitmap.close?.(),
+      }
+    } catch {
+      // Fall back to the browser image decoder below.
+    }
+  }
+
   const url = URL.createObjectURL(file)
+  const image = new Image()
+  image.decoding = 'async'
+  image.src = url
   try {
-    const image = new Image()
-    image.decoding = 'async'
-    image.src = url
     await image.decode()
-    return image
-  } finally {
+  } catch {
     URL.revokeObjectURL(url)
+    throw new Error('این فرمت تصویر روی این گوشی/مرورگر قابل پردازش نیست. عکس را با فرمت JPG یا حالت Compatible دوربین بگیر.')
+  }
+
+  return {
+    source: image,
+    width: image.naturalWidth,
+    height: image.naturalHeight,
+    cleanup: () => URL.revokeObjectURL(url),
   }
 }
 
-async function canvasBlob(canvas: HTMLCanvasElement, quality: number) {
+async function canvasBlob(canvas: HTMLCanvasElement, mimeType: 'image/webp' | 'image/jpeg', quality: number) {
   return new Promise<Blob>((resolve, reject) => {
     canvas.toBlob((blob) => {
       if (blob) resolve(blob)
       else reject(new Error('IMAGE_ENCODE_FAILED'))
-    }, 'image/webp', quality)
+    }, mimeType, quality)
   })
 }
 
-async function prepareImage(file: File): Promise<File> {
-  if (!SUPPORTED_TYPES.has(file.type)) throw new Error('فقط JPG، PNG و WebP پشتیبانی می‌شود.')
+async function encodeForWeb(canvas: HTMLCanvasElement, quality: number) {
+  const webp = await canvasBlob(canvas, 'image/webp', quality)
+  // Very old browsers may ignore the requested MIME type. Keep a safe fallback.
+  if (webp.type === 'image/webp') return { blob: webp, extension: 'webp' }
+  const jpeg = await canvasBlob(canvas, 'image/jpeg', quality)
+  return { blob: jpeg, extension: 'jpg' }
+}
 
-  const image = await loadImage(file)
-  const maxSide = 2400
-  const scale = Math.min(1, maxSide / Math.max(image.naturalWidth, image.naturalHeight))
-  const width = Math.max(1, Math.round(image.naturalWidth * scale))
-  const height = Math.max(1, Math.round(image.naturalHeight * scale))
+function scaledCanvas(source: CanvasImageSource, sourceWidth: number, sourceHeight: number, maxSide: number) {
+  const scale = Math.min(1, maxSide / Math.max(sourceWidth, sourceHeight))
+  const width = Math.max(1, Math.round(sourceWidth * scale))
+  const height = Math.max(1, Math.round(sourceHeight * scale))
   const canvas = document.createElement('canvas')
   canvas.width = width
   canvas.height = height
   const context = canvas.getContext('2d')
   if (!context) throw new Error('پردازش تصویر در مرورگر انجام نشد.')
-  context.drawImage(image, 0, 0, width, height)
+  context.imageSmoothingEnabled = true
+  context.imageSmoothingQuality = 'high'
+  context.drawImage(source, 0, 0, width, height)
+  return canvas
+}
 
-  let blob = await canvasBlob(canvas, 0.86)
-  if (blob.size > MAX_UPLOAD_BYTES) blob = await canvasBlob(canvas, 0.74)
+async function prepareImage(file: File): Promise<PreparedImage> {
+  if (!file.type.startsWith('image/')) throw new Error('فایل انتخاب‌شده تصویر نیست.')
 
-  if (blob.size > MAX_UPLOAD_BYTES && Math.max(width, height) > 1900) {
-    const reducedScale = 1900 / Math.max(width, height)
-    const reduced = document.createElement('canvas')
-    reduced.width = Math.round(width * reducedScale)
-    reduced.height = Math.round(height * reducedScale)
-    const reducedContext = reduced.getContext('2d')
-    if (!reducedContext) throw new Error('پردازش تصویر در مرورگر انجام نشد.')
-    reducedContext.drawImage(canvas, 0, 0, reduced.width, reduced.height)
-    blob = await canvasBlob(reduced, 0.72)
+  const decoded = await decodeOrientedImage(file)
+  try {
+    let canvas = scaledCanvas(decoded.source, decoded.width, decoded.height, MAX_IMAGE_SIDE)
+    let encoded = await encodeForWeb(canvas, 0.84)
+
+    // Phone photos can be very detailed. Reduce quality first, then dimensions,
+    // until every single upload comfortably fits the Vercel request limit.
+    for (const quality of [0.78, 0.72, 0.66]) {
+      if (encoded.blob.size <= MAX_UPLOAD_BYTES) break
+      encoded = await encodeForWeb(canvas, quality)
+    }
+
+    while (encoded.blob.size > MAX_UPLOAD_BYTES && Math.max(canvas.width, canvas.height) > 1400) {
+      const nextMaxSide = Math.max(1400, Math.round(Math.max(canvas.width, canvas.height) * 0.82))
+      const reduced = document.createElement('canvas')
+      const scale = nextMaxSide / Math.max(canvas.width, canvas.height)
+      reduced.width = Math.max(1, Math.round(canvas.width * scale))
+      reduced.height = Math.max(1, Math.round(canvas.height * scale))
+      const context = reduced.getContext('2d')
+      if (!context) throw new Error('پردازش تصویر در مرورگر انجام نشد.')
+      context.imageSmoothingEnabled = true
+      context.imageSmoothingQuality = 'high'
+      context.drawImage(canvas, 0, 0, reduced.width, reduced.height)
+      canvas = reduced
+      encoded = await encodeForWeb(canvas, 0.72)
+    }
+
+    if (encoded.blob.size > MAX_UPLOAD_BYTES) throw new Error('حجم این تصویر بعد از فشرده‌سازی هنوز زیاد است.')
+
+    // Canvas re-encoding intentionally removes EXIF metadata, including GPS,
+    // while the already-oriented pixels preserve the correct visual direction.
+    return {
+      file: new File([encoded.blob], `${baseName(file.name)}.${encoded.extension}`, {
+        type: encoded.blob.type,
+        lastModified: Date.now(),
+      }),
+      width: canvas.width,
+      height: canvas.height,
+      originalBytes: file.size,
+    }
+  } finally {
+    decoded.cleanup()
   }
-
-  if (blob.size > MAX_UPLOAD_BYTES) throw new Error('حجم این تصویر بعد از فشرده‌سازی هنوز زیاد است.')
-
-  return new File([blob], `${baseName(file.name)}.webp`, {
-    type: 'image/webp',
-    lastModified: Date.now(),
-  })
 }
 
 export default function IvilaPropertyForm({ propertyId }: { propertyId?: string | number }) {
@@ -131,6 +217,7 @@ export default function IvilaPropertyForm({ propertyId }: { propertyId?: string 
   const markerRef = useRef<any>(null)
   const distanceRequestRef = useRef(0)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const cameraInputRef = useRef<HTMLInputElement | null>(null)
   const dragIndexRef = useRef<number | null>(null)
   const imagesRef = useRef<ImageDraft[]>([])
   const originalBlobUrlsRef = useRef<string[]>([])
@@ -507,10 +594,13 @@ export default function IvilaPropertyForm({ propertyId }: { propertyId?: string 
         const optimized = await prepareImage(file)
         prepared.push({
           key: randomKey(),
-          file: optimized,
-          preview: URL.createObjectURL(optimized),
+          file: optimized.file,
+          preview: URL.createObjectURL(optimized.file),
           originalName: file.name,
           uploadState: 'ready',
+          width: optimized.width,
+          height: optimized.height,
+          originalBytes: optimized.originalBytes,
         })
       } catch (reason) {
         const message = reason instanceof Error ? reason.message : 'تصویر قابل پردازش نیست.'
@@ -874,13 +964,38 @@ export default function IvilaPropertyForm({ propertyId }: { propertyId?: string 
               ref={fileInputRef}
               className={styles.hiddenFileInput}
               type="file"
-              accept="image/jpeg,image/png,image/webp"
+              accept="image/*"
               multiple
               onChange={(event) => {
                 if (event.target.files?.length) void addFiles(event.target.files)
                 event.currentTarget.value = ''
               }}
             />
+            <input
+              ref={cameraInputRef}
+              className={styles.hiddenFileInput}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={(event) => {
+                if (event.target.files?.length) void addFiles(event.target.files)
+                event.currentTarget.value = ''
+              }}
+            />
+
+            <div className={styles.imageSourceActions}>
+              <button type="button" onClick={() => blobStatus === 'ready' && cameraInputRef.current?.click()} disabled={blobStatus !== 'ready' || busy || addingImages}>
+                <Camera size={17} /> گرفتن عکس با دوربین
+              </button>
+              <button type="button" onClick={() => blobStatus === 'ready' && fileInputRef.current?.click()} disabled={blobStatus !== 'ready' || busy || addingImages}>
+                <Images size={17} /> انتخاب از گالری
+              </button>
+            </div>
+
+            <div className={styles.imageProcessingNote}>
+              <Check size={16} />
+              <span>چرخش عکس، Resize تا {MAX_IMAGE_SIDE.toLocaleString('fa-IR')}px، تبدیل WebP و حذف EXIF/GPS به‌صورت خودکار انجام می‌شود.</span>
+            </div>
 
             <div
               className={`${styles.imageDropzone} ${dropActive ? styles.imageDropzoneActive : ''} ${blobStatus !== 'ready' ? styles.imageDropzoneDisabled : ''}`}
@@ -898,7 +1013,7 @@ export default function IvilaPropertyForm({ propertyId }: { propertyId?: string 
               <span className={styles.dropzoneIcon}>{addingImages ? <ImagePlus size={25} /> : <UploadCloud size={25} />}</span>
               <div>
                 <strong>{addingImages ? 'در حال آماده‌سازی عکس‌ها…' : 'عکس‌ها را اینجا رها کن'}</strong>
-                <p>یا کلیک کن و چند عکس را یکجا انتخاب کن. عکس‌ها قبل از ارسال خودکار WebP و کم‌حجم می‌شوند.</p>
+                <p>برای چند عکس کلیک یا Drag & Drop کن. عکس کامل برای گالری حفظ می‌شود و فقط نمایش کارت سایت Crop بصری دارد.</p>
               </div>
               <span className={styles.dropzoneMeta}>{images.length.toLocaleString('fa-IR')} / {MAX_IMAGES.toLocaleString('fa-IR')}</span>
             </div>
@@ -909,6 +1024,17 @@ export default function IvilaPropertyForm({ propertyId }: { propertyId?: string 
 
             {images.length > 0 && (
               <>
+                <div className={styles.coverPreviewPanel}>
+                  <div className={styles.coverPreviewFrame}>
+                    <img src={images[0].preview} alt="پیش‌نمایش کاور ملک" />
+                    <span><Star size={13} fill="currentColor" /> پیش‌نمایش کاور سایت</span>
+                  </div>
+                  <div className={styles.coverPreviewInfo}>
+                    <strong>کاور کارت ۴:۳</strong>
+                    <p>این فقط قاب نمایش کارت است؛ فایل اصلی برای گالری Crop نمی‌شود. عکس اول همیشه کاور است.</p>
+                    <small>{imageDraftMeta(images[0])} · EXIF/GPS حذف شده</small>
+                  </div>
+                </div>
                 <div className={styles.gallerySummary}>
                   <span><ImagePlus size={16} /> {images.length.toLocaleString('fa-IR')} تصویر آماده</span>
                   {busy && <span>{uploadedCount.toLocaleString('fa-IR')} تصویر آپلود شده</span>}
@@ -938,7 +1064,7 @@ export default function IvilaPropertyForm({ propertyId }: { propertyId?: string 
                       <div className={styles.galleryFooter}>
                         <div>
                           <strong>{index === 0 ? 'تصویر اصلی' : `تصویر ${index + 1}`}</strong>
-                          <span>{formatBytes(item.file?.size)}</span>
+                          <span>{imageDraftMeta(item)}</span>
                         </div>
                         <div className={styles.galleryActions}>
                           {index > 0 && <button type="button" onClick={() => setCover(index)} disabled={busy}><Star size={13} /> کاور</button>}
