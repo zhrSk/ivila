@@ -1271,3 +1271,46 @@ html, body {
   .search-mode-option strong { font-size: 9px; }
   .search-mode-icon { width: 30px; height: 30px; }
 }
+
+/* ivila team workflow v1 — gallery + mobile property visual hierarchy */
+.detail-gallery button { font: inherit; }
+.detail-gallery-main,
+.detail-gallery-side .gallery-tile { padding: 0; border: 0; background: transparent; cursor: zoom-in; overflow: hidden; }
+.detail-gallery-main { min-width: 0; }
+.gallery-counter { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; border: 1px solid rgba(255,255,255,.24); }
+.gallery-lightbox { position: fixed; z-index: 1000; inset: 0; background: rgba(3,12,10,.94); display: grid; place-items: center; padding: 72px 64px 110px; direction: rtl; }
+.gallery-lightbox-stage { width: min(1120px, 100%); height: min(72vh, 780px); display: grid; place-items: center; position: relative; }
+.gallery-lightbox-stage img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 14px; }
+.gallery-lightbox-stage span { position: absolute; bottom: -38px; color: rgba(255,255,255,.78); font-size: 12px; }
+.gallery-close, .gallery-nav { position: fixed; z-index: 1002; display: grid; place-items: center; border: 1px solid rgba(255,255,255,.17); background: rgba(255,255,255,.10); color: #fff; cursor: pointer; backdrop-filter: blur(14px); }
+.gallery-close { top: 22px; left: 22px; width: 44px; height: 44px; border-radius: 50%; }
+.gallery-nav { top: 50%; width: 48px; height: 58px; border-radius: 14px; transform: translateY(-50%); }
+.gallery-prev { right: 18px; }
+.gallery-next { left: 18px; }
+.gallery-thumbs { position: fixed; z-index: 1002; left: 50%; bottom: 18px; transform: translateX(-50%); max-width: calc(100vw - 40px); display: flex; gap: 7px; overflow-x: auto; padding: 5px; }
+.gallery-thumbs button { width: 66px; height: 48px; flex: 0 0 auto; padding: 2px; border: 2px solid transparent; border-radius: 9px; background: rgba(255,255,255,.1); cursor: pointer; }
+.gallery-thumbs button.active { border-color: #79dbc5; }
+.gallery-thumbs img { width: 100%; height: 100%; object-fit: cover; border-radius: 6px; }
+
+@media (max-width: 760px) {
+  /* On phones property imagery is the primary browsing signal, not a tiny thumbnail. */
+  .property-card.compact { display: block !important; min-height: 0 !important; }
+  .property-card.compact .property-image-wrap { width: 100% !important; height: 205px !important; min-height: 205px !important; }
+  .property-card.compact .property-body { padding: 13px 14px 14px !important; }
+  .property-card.compact .property-title { font-size: 14px !important; line-height: 1.6 !important; }
+  .property-card.compact .property-specs { font-size: 10px !important; }
+  .property-card.compact .distance-row span { font-size: 8.5px !important; padding: 4px 7px !important; }
+  .property-card.compact .property-footer strong { font-size: 13px !important; }
+
+  .detail-gallery { height: 330px !important; display: block !important; border-radius: 18px; }
+  .detail-gallery-main { width: 100%; height: 100%; display: block; }
+  .detail-gallery-side { display: none !important; }
+  .gallery-counter { left: 11px; bottom: 11px; padding: 8px 10px; font-size: 9.5px; }
+  .gallery-lightbox { padding: 62px 12px 96px; }
+  .gallery-lightbox-stage { height: 68vh; }
+  .gallery-nav { width: 40px; height: 50px; }
+  .gallery-prev { right: 8px; }
+  .gallery-next { left: 8px; }
+  .gallery-close { top: 14px; left: 14px; }
+  .gallery-thumbs button { width: 58px; height: 44px; }
+}

@@ -5,6 +5,15 @@ function slugifyCode(code?: string) {
   return code?.trim().toLowerCase().replace(/\s+/g, '-')
 }
 
+function roleOf(user: unknown) {
+  return (user as { role?: string } | null | undefined)?.role
+}
+
+function userId(user: unknown) {
+  const value = (user as { id?: string | number } | null | undefined)?.id
+  return value === undefined || value === null ? '' : String(value)
+}
+
 export const Properties: CollectionConfig = {
   slug: 'properties',
   labels: {
@@ -19,25 +28,59 @@ export const Properties: CollectionConfig = {
   },
   access: {
     read: ({ req }) => {
-      if (req.user) return true
+      if (!req.user) return { status: { equals: 'published' } }
+      if (roleOf(req.user) === 'admin') return true
+      const id = userId(req.user)
       return {
-        status: {
-          equals: 'published',
-        },
+        or: [
+          { status: { equals: 'published' } },
+          { createdByUserId: { equals: id } },
+        ],
       }
     },
     create: ({ req }) => Boolean(req.user),
-    update: ({ req }) => Boolean(req.user),
-    delete: ({ req }) => Boolean(req.user),
+    update: ({ req }) => {
+      if (roleOf(req.user) === 'admin') return true
+      if (!req.user) return false
+      return {
+        and: [
+          { createdByUserId: { equals: userId(req.user) } },
+          { status: { equals: 'draft' } },
+        ],
+      }
+    },
+    delete: ({ req }) => {
+      if (roleOf(req.user) === 'admin') return true
+      if (!req.user) return false
+      return {
+        and: [
+          { createdByUserId: { equals: userId(req.user) } },
+          { status: { equals: 'draft' } },
+        ],
+      }
+    },
   },
   hooks: {
     beforeChange: [
       async ({ data, originalDoc, req }) => {
+        const role = roleOf(req.user)
+        const currentUserId = userId(req.user)
+        if (currentUserId) {
+          if (!originalDoc?.createdByUserId) data.createdByUserId = currentUserId
+          else data.createdByUserId = originalDoc.createdByUserId
+        }
+        if (role === 'agent') {
+          data.status = 'draft'
+          data.featured = false
+        }
+
         const coordinates = data?.coordinates ?? originalDoc?.coordinates
         if (Array.isArray(coordinates) && coordinates.length === 2) {
           const longitude = Number(coordinates[0])
           const latitude = Number(coordinates[1])
           if (Number.isFinite(longitude) && Number.isFinite(latitude)) {
+            data.publicLng = Math.round(longitude * 100) / 100
+            data.publicLat = Math.round(latitude * 100) / 100
             try {
               const distances = await computeEnvironmentalDistances(req.payload, longitude, latitude)
               if (distances.seaDistanceM !== null) data.seaDistanceM = distances.seaDistanceM
@@ -231,6 +274,31 @@ export const Properties: CollectionConfig = {
           label: 'موقعیت روی نقشه',
           fields: [
             {
+              type: 'row',
+              fields: [
+                {
+                  name: 'ownerName',
+                  type: 'text',
+                  label: 'نام مالک',
+                  admin: { width: '50%' },
+                  access: { read: ({ req }) => Boolean(req.user) },
+                },
+                {
+                  name: 'ownerPhone',
+                  type: 'text',
+                  label: 'شماره مالک',
+                  admin: { width: '50%' },
+                  access: { read: ({ req }) => Boolean(req.user) },
+                },
+              ],
+            },
+            {
+              name: 'ownerNotes',
+              type: 'textarea',
+              label: 'یادداشت داخلی مالک',
+              access: { read: ({ req }) => Boolean(req.user) },
+            },
+            {
               name: 'locationText',
               type: 'text',
               label: 'آدرس/محدوده قابل نمایش',
@@ -245,9 +313,15 @@ export const Properties: CollectionConfig = {
               required: true,
               index: true,
               admin: {
-                description: 'فرمت Payload: ابتدا Longitude و سپس Latitude. در مرحله بعد انتخاب مستقیم روی نقشه را به پنل اضافه می‌کنیم.',
+                description: 'مختصات دقیق فقط برای کاربران داخلی قابل مشاهده است.',
               },
+              access: { read: ({ req }) => Boolean(req.user) },
             },
+            { name: 'publicLng', type: 'number', admin: { hidden: true } },
+            { name: 'publicLat', type: 'number', admin: { hidden: true } },
+            { name: 'locationSource', type: 'text', admin: { hidden: true }, access: { read: ({ req }) => Boolean(req.user) } },
+            { name: 'locationAccuracyM', type: 'number', admin: { hidden: true }, access: { read: ({ req }) => Boolean(req.user) } },
+            { name: 'locationCapturedAt', type: 'date', admin: { hidden: true }, access: { read: ({ req }) => Boolean(req.user) } },
             {
               type: 'row',
               fields: [
@@ -322,6 +396,14 @@ export const Properties: CollectionConfig = {
         {
           label: 'انتشار',
           fields: [
+            {
+              name: 'createdByUserId',
+              type: 'text',
+              label: 'ثبت‌کننده',
+              admin: { hidden: true },
+              index: true,
+              access: { read: ({ req }) => Boolean(req.user) },
+            },
             {
               type: 'row',
               fields: [

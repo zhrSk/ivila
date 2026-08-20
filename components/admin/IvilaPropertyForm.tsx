@@ -24,19 +24,22 @@ type Deal = 'sale' | 'rent'
 type PropertyType = 'villa' | 'land' | 'apartment'
 type Lifestyle = 'coast' | 'forest' | 'village' | 'urban'
 type DocumentStatus = 'single-page' | 'council' | 'contract' | 'in-progress'
-type PublishStatus = 'draft' | 'published'
+type PublishStatus = 'draft' | 'published' | 'sold' | 'rented' | 'archived'
+type UserRole = 'admin' | 'agent'
 type BlobStatus = 'loading' | 'ready' | 'missing' | 'error'
 type UploadState = 'ready' | 'uploading' | 'uploaded' | 'error'
 
 type ImageDraft = {
   key: string
-  file: File
+  file?: File
   preview: string
   originalName: string
   uploadState: UploadState
   blobUrl?: string
   error?: string
 }
+
+const DEFAULT_AMENITIES = ['پارکینگ','آسانسور','انباری','بالکن','تراس','حیاط','حیاط خصوصی','استخر','لابی','نگهبانی','اتاق مستر','مبله','دسترسی آسفالت','نورگیری عالی','آب و برق مستقل']
 
 const MAX_IMAGES = 30
 const MAX_UPLOAD_BYTES = 3_800_000
@@ -56,7 +59,8 @@ function baseName(filename: string) {
   return filename.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9-_]+/g, '-').replace(/^-+|-+$/g, '') || 'property-image'
 }
 
-function formatBytes(bytes: number) {
+function formatBytes(bytes?: number) {
+  if (!bytes) return 'ذخیره‌شده'
   if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024)).toLocaleString('fa-IR')} کیلوبایت`
   return `${(bytes / (1024 * 1024)).toLocaleString('fa-IR', { maximumFractionDigits: 1 })} مگابایت`
 }
@@ -120,7 +124,7 @@ async function prepareImage(file: File): Promise<File> {
   })
 }
 
-export default function IvilaPropertyForm() {
+export default function IvilaPropertyForm({ propertyId }: { propertyId?: string | number }) {
   const mapContainer = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<any>(null)
   const markerRef = useRef<any>(null)
@@ -128,6 +132,7 @@ export default function IvilaPropertyForm() {
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const dragIndexRef = useRef<number | null>(null)
   const imagesRef = useRef<ImageDraft[]>([])
+  const originalBlobUrlsRef = useRef<string[]>([])
 
   const [code, setCode] = useState('IV-')
   const [title, setTitle] = useState('')
@@ -137,6 +142,16 @@ export default function IvilaPropertyForm() {
   const [area, setArea] = useState('')
   const [rooms, setRooms] = useState('0')
   const [documentStatus, setDocumentStatus] = useState<DocumentStatus>('single-page')
+  const [ownerName, setOwnerName] = useState('')
+  const [ownerPhone, setOwnerPhone] = useState('')
+  const [ownerNotes, setOwnerNotes] = useState('')
+  const [amenities, setAmenities] = useState<string[]>([])
+  const [customAmenity, setCustomAmenity] = useState('')
+  const [userRole, setUserRole] = useState<UserRole>('agent')
+  const [loadingExisting, setLoadingExisting] = useState(Boolean(propertyId))
+  const [locationSource, setLocationSource] = useState<'map' | 'gps'>('map')
+  const [locationAccuracyM, setLocationAccuracyM] = useState<number | null>(null)
+  const [locationCapturedAt, setLocationCapturedAt] = useState<string | null>(null)
   const [locationText, setLocationText] = useState('')
   const [longitude, setLongitude] = useState<number | null>(null)
   const [latitude, setLatitude] = useState<number | null>(null)
@@ -199,6 +214,57 @@ export default function IvilaPropertyForm() {
   useEffect(() => {
     let disposed = false
 
+    fetch('/api/users/me', { cache: 'no-store', credentials: 'include' })
+      .then(async (response) => {
+        if (response.status === 401) { window.location.assign('/ivila-login'); return }
+        const result = await response.json().catch(() => null) as any
+        if (!disposed && result?.user) {
+          setUserRole(result.user.role === 'admin' ? 'admin' : 'agent')
+          if (result.user.role !== 'admin') setStatus('draft')
+        }
+      })
+      .catch(() => {})
+
+    if (propertyId) {
+      fetch(`/api/properties/${propertyId}?depth=0`, { cache: 'no-store', credentials: 'include' })
+        .then(async (response) => {
+          if (response.status === 401) { window.location.assign('/ivila-login'); return }
+          if (!response.ok) throw new Error('PROPERTY_LOAD_FAILED')
+          const doc = await response.json() as any
+          if (disposed) return
+          setCode(doc.code || 'IV-')
+          setTitle(doc.title || '')
+          setDeal(doc.deal === 'rent' ? 'rent' : 'sale')
+          setType(doc.type || 'villa')
+          setLifestyle(doc.lifestyle || 'coast')
+          setArea(doc.areaM2 == null ? '' : String(doc.areaM2))
+          setRooms(doc.rooms == null ? '0' : String(doc.rooms))
+          setDocumentStatus(doc.documentStatus || 'single-page')
+          setOwnerName(doc.ownerName || '')
+          setOwnerPhone(doc.ownerPhone || '')
+          setOwnerNotes(doc.ownerNotes || '')
+          setLocationText(doc.locationText || '')
+          if (Array.isArray(doc.coordinates) && doc.coordinates.length === 2) {
+            setLongitude(Number(doc.coordinates[0])); setLatitude(Number(doc.coordinates[1]))
+          }
+          setLocationSource(doc.locationSource === 'gps' ? 'gps' : 'map')
+          setLocationAccuracyM(typeof doc.locationAccuracyM === 'number' ? doc.locationAccuracyM : null)
+          setLocationCapturedAt(doc.locationCapturedAt || null)
+          setSalePrice(doc.salePriceToman == null ? '' : String(doc.salePriceToman))
+          setDeposit(doc.depositToman == null ? '' : String(doc.depositToman))
+          setMonthlyRent(doc.monthlyRentToman == null ? '' : String(doc.monthlyRentToman))
+          setDescription(doc.description || '')
+          setStatus(['draft','published','sold','rented','archived'].includes(doc.status) ? doc.status as PublishStatus : 'draft')
+          setAmenities(Array.isArray(doc.amenities) ? doc.amenities.filter((x: unknown): x is string => typeof x === 'string') : [])
+          let urls: string[] = []
+          try { const parsed = JSON.parse(doc.imageUrlsJson || '[]'); if (Array.isArray(parsed)) urls = parsed.filter((x): x is string => typeof x === 'string') } catch {}
+          originalBlobUrlsRef.current = urls
+          setImages(urls.map((url, index) => ({ key: `existing-${index}-${url}`, preview: url, originalName: `تصویر ${index + 1}`, uploadState: 'uploaded' as const, blobUrl: url })))
+        })
+        .catch(() => { if (!disposed) setError('اطلاعات فایل برای ویرایش دریافت نشد.') })
+        .finally(() => { if (!disposed) setLoadingExisting(false) })
+    }
+
     fetch('/api/ivila-media-health', { cache: 'no-store', credentials: 'include' })
       .then(async (response) => {
         const result = await response.json().catch(() => null) as null | { ready?: boolean; code?: string; detail?: string }
@@ -240,6 +306,9 @@ export default function IvilaPropertyForm() {
         const lat = Number(event.lngLat.lat.toFixed(6))
         setLongitude(lng)
         setLatitude(lat)
+        setLocationSource('map')
+        setLocationAccuracyM(null)
+        setLocationCapturedAt(new Date().toISOString())
         void calculateEnvironmentalDistances(lng, lat)
 
         if (markerRef.current) markerRef.current.remove()
@@ -261,6 +330,15 @@ export default function IvilaPropertyForm() {
   }, [])
 
   useEffect(() => {
+    if (!mapRef.current || longitude === null || latitude === null) return
+    if (markerRef.current) markerRef.current.remove()
+    void import('maplibre-gl').then((maplibregl) => {
+      markerRef.current = new maplibregl.Marker({ color: '#087c70' }).setLngLat([longitude, latitude]).addTo(mapRef.current)
+      if (propertyId) mapRef.current.flyTo({ center: [longitude, latitude], zoom: 14, essential: false })
+    })
+  }, [propertyId, longitude, latitude])
+
+  useEffect(() => {
     imagesRef.current = images
   }, [images])
 
@@ -272,6 +350,32 @@ export default function IvilaPropertyForm() {
 
   function locateRoyan() {
     mapRef.current?.flyTo?.({ center: [51.9607, 36.5665], zoom: 12, essential: true })
+  }
+
+  function captureCurrentLocation() {
+    if (!navigator.geolocation) { setError('GPS مرورگر روی این دستگاه در دسترس نیست.'); return }
+    setError('')
+    navigator.geolocation.getCurrentPosition((position) => {
+      const lng = Number(position.coords.longitude.toFixed(6))
+      const lat = Number(position.coords.latitude.toFixed(6))
+      setLongitude(lng); setLatitude(lat)
+      setLocationSource('gps')
+      setLocationAccuracyM(Math.round(position.coords.accuracy))
+      setLocationCapturedAt(new Date().toISOString())
+      mapRef.current?.flyTo?.({ center: [lng, lat], zoom: 16, essential: true })
+      void calculateEnvironmentalDistances(lng, lat)
+    }, () => setError('دسترسی Location داده نشد یا GPS نتوانست موقعیت را پیدا کند.'), { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 })
+  }
+
+  function toggleAmenity(value: string) {
+    setAmenities((current) => current.includes(value) ? current.filter((item) => item !== value) : [...current, value])
+  }
+
+  function addCustomAmenity() {
+    const value = customAmenity.trim()
+    if (!value) return
+    setAmenities((current) => current.includes(value) ? current : [...current, value])
+    setCustomAmenity('')
   }
 
   async function addFiles(fileList: FileList | File[]) {
@@ -340,6 +444,7 @@ export default function IvilaPropertyForm() {
 
   async function uploadImage(item: ImageDraft, index: number) {
     if (item.blobUrl) return item.blobUrl
+    if (!item.file) throw new Error('فایل تصویر در دسترس نیست.')
 
     setImages((current) => current.map((candidate) => candidate.key === item.key
       ? { ...candidate, uploadState: 'uploading', error: undefined }
@@ -411,7 +516,7 @@ export default function IvilaPropertyForm() {
       return
     }
 
-    if (status === 'published' && images.length === 0) {
+    if (userRole === 'admin' && status === 'published' && images.length === 0) {
       setError('برای انتشار فایل حداقل یک عکس انتخاب کن. پیش‌نویس را می‌توان بدون عکس ذخیره کرد.')
       return
     }
@@ -445,19 +550,26 @@ export default function IvilaPropertyForm() {
         areaM2: numeric(area),
         rooms: numeric(rooms) ?? 0,
         documentStatus,
+        ownerName: ownerName.trim(),
+        ownerPhone: ownerPhone.trim(),
+        ownerNotes: ownerNotes.trim(),
+        amenities,
         description: description.trim(),
         locationText: locationText.trim(),
         coordinates: [longitude, latitude],
+        locationSource,
+        locationAccuracyM,
+        locationCapturedAt: locationCapturedAt || new Date().toISOString(),
         salePriceToman: deal === 'sale' ? numeric(salePrice) : undefined,
         depositToman: deal === 'rent' ? numeric(deposit) : undefined,
         monthlyRentToman: deal === 'rent' ? numeric(monthlyRent) : undefined,
         imageUrlsJson: JSON.stringify(imageUrls),
-        status,
+        status: userRole === 'agent' ? 'draft' : status,
         featured: false,
       }
 
-      const response = await fetch('/api/properties', {
-        method: 'POST',
+      const response = await fetch(propertyId ? `/api/properties/${propertyId}` : '/api/properties', {
+        method: propertyId ? 'PATCH' : 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -479,6 +591,10 @@ export default function IvilaPropertyForm() {
         return
       }
 
+      if (propertyId) {
+        const removed = originalBlobUrlsRef.current.filter((url) => !imageUrls.includes(url))
+        if (removed.length) await Promise.allSettled(removed.map((url) => fetch('/api/ivila-blob-upload', { method: 'DELETE', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url }) })))
+      }
       setSuccess(true)
       setTimeout(() => window.location.assign('/admin'), 700)
     } catch (reason) {
@@ -489,6 +605,8 @@ export default function IvilaPropertyForm() {
       setBusy(false)
     }
   }
+
+  if (loadingExisting) return <main className={styles.formPage} dir="rtl"><div className={styles.formLoading}>در حال دریافت فایل برای ویرایش…</div></main>
 
   return (
     <main className={styles.formPage} dir="rtl">
@@ -501,8 +619,8 @@ export default function IvilaPropertyForm() {
       <form className={styles.propertyForm} onSubmit={submit}>
         <section className={styles.formIntro}>
           <div>
-            <span className={styles.eyebrow}>فایل جدید</span>
-            <h1>ثبت ملک در ivila</h1>
+            <span className={styles.eyebrow}>{propertyId ? 'ویرایش فایل' : 'فایل جدید'}</span>
+            <h1>{propertyId ? 'ویرایش ملک در ivila' : 'ثبت ملک در ivila'}</h1>
             <p>اطلاعات اصلی، تصاویر و محل دقیق ملک را در یک مرحله ثبت کن.</p>
           </div>
           <FilePlus2 size={42} />
@@ -523,6 +641,9 @@ export default function IvilaPropertyForm() {
               <label className={styles.field}><span>متراژ</span><input required inputMode="numeric" value={area} onChange={(e) => setArea(e.target.value)} placeholder="۳۲۰" /></label>
               <label className={styles.field}><span>تعداد خواب</span><input required inputMode="numeric" value={rooms} onChange={(e) => setRooms(e.target.value)} /></label>
               <label className={styles.field}><span>وضعیت سند</span><select value={documentStatus} onChange={(e) => setDocumentStatus(e.target.value as DocumentStatus)}><option value="single-page">سند تک‌برگ</option><option value="council">سند شورایی</option><option value="contract">قولنامه‌ای</option><option value="in-progress">در حال اخذ سند</option></select></label>
+              <label className={styles.field}><span>نام مالک</span><input value={ownerName} onChange={(e) => setOwnerName(e.target.value)} placeholder="نام مالک" /></label>
+              <label className={styles.field}><span>شماره مالک</span><input value={ownerPhone} onChange={(e) => setOwnerPhone(e.target.value)} inputMode="tel" dir="ltr" placeholder="09..." /></label>
+              <label className={`${styles.field} ${styles.span2}`}><span>یادداشت داخلی مالک</span><textarea value={ownerNotes} onChange={(e) => setOwnerNotes(e.target.value)} placeholder="شرایط بازدید، زمان تماس، توضیحاتی که فقط تیم ivila می‌بیند" rows={3} /></label>
             </div>
           </section>
 
@@ -537,7 +658,11 @@ export default function IvilaPropertyForm() {
                   <label className={styles.field}><span>اجاره ماهانه (تومان)</span><input inputMode="numeric" value={monthlyRent} onChange={(e) => setMonthlyRent(e.target.value)} dir="ltr" /></label>
                 </>
               )}
-              <label className={`${styles.field} ${styles.span2}`}><span>وضعیت فایل</span><select value={status} onChange={(e) => setStatus(e.target.value as PublishStatus)}><option value="draft">فعلاً پیش‌نویس</option><option value="published">همین حالا منتشر شود</option></select></label>
+              {userRole === 'admin' ? (
+                <label className={`${styles.field} ${styles.span2}`}><span>وضعیت فایل</span><select value={status} onChange={(e) => setStatus(e.target.value as PublishStatus)}><option value="draft">پیش‌نویس</option><option value="published">منتشر شده</option><option value="sold">فروخته شده</option><option value="rented">اجاره داده شده</option><option value="archived">آرشیو</option></select></label>
+              ) : (
+                <div className={`${styles.agentDraftNotice} ${styles.span2}`}>فایل‌های مشاور فقط به‌صورت پیش‌نویس ذخیره می‌شوند و بعد از بررسی ادمین اصلی منتشر خواهند شد.</div>
+              )}
             </div>
           </section>
 
@@ -546,9 +671,10 @@ export default function IvilaPropertyForm() {
             <label className={styles.field}><span>نام محدوده / آدرس قابل نمایش</span><input required value={locationText} onChange={(e) => setLocationText(e.target.value)} placeholder="رویان، نوار ساحلی" /></label>
             <div className={styles.adminMapWrap}>
               <div ref={mapContainer} className={styles.adminMap} />
-              <button type="button" className={styles.mapLocate} onClick={locateRoyan}><LocateFixed size={17} /> رویان</button>
+              <div className={styles.mapLocateGroup}><button type="button" className={styles.mapLocate} onClick={locateRoyan}><MapPin size={17} /> رویان</button><button type="button" className={`${styles.mapLocate} ${styles.gpsButton}`} onClick={captureCurrentLocation}><LocateFixed size={17} /> موقعیت فعلی من</button></div>
               <div className={styles.mapCoordinate}><MapPin size={15} /> {longitude === null ? 'هنوز نقطه‌ای انتخاب نشده' : `${latitude}, ${longitude}`}</div>
             </div>
+            <div className={styles.locationAudit}><strong>{locationSource === 'gps' ? 'موقعیت با GPS ثبت شده' : 'موقعیت از روی نقشه انتخاب شده'}</strong>{locationAccuracyM !== null && <span>دقت تقریبی GPS: {locationAccuracyM.toLocaleString('fa-IR')} متر</span>}</div>
             <div className={styles.autoDistanceGrid}>
               <div className={`${styles.autoDistanceCard} ${styles.seaDistanceCard}`}>
                 <span className={styles.autoDistanceIcon}><Waves size={19} /></span>
@@ -576,7 +702,15 @@ export default function IvilaPropertyForm() {
           </section>
 
           <section className={`${styles.formCard} ${styles.fullCard}`}>
-            <div className={styles.sectionTitle}><span>۴</span><div><h2>تصاویر ملک</h2><p>تصویر اول کاور سایت است؛ با Drag & Drop ترتیب را تغییر بده.</p></div></div>
+            <div className={styles.sectionTitle}><span>۴</span><div><h2>امکانات ملک</h2><p>امکاناتی که در صفحه جزئیات به مشتری نمایش داده می‌شوند.</p></div></div>
+            <div className={styles.amenityPicker}>
+              {DEFAULT_AMENITIES.map((item) => <button key={item} type="button" className={amenities.includes(item) ? styles.amenityActive : ''} onClick={() => toggleAmenity(item)}><Check size={14}/>{item}</button>)}
+            </div>
+            <div className={styles.customAmenity}><input value={customAmenity} onChange={(e) => setCustomAmenity(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCustomAmenity() } }} placeholder="امکان دیگر..."/><button type="button" onClick={addCustomAmenity}>افزودن</button></div>
+          </section>
+
+          <section className={`${styles.formCard} ${styles.fullCard}`}>
+            <div className={styles.sectionTitle}><span>۵</span><div><h2>تصاویر ملک</h2><p>تصویر اول کاور سایت است؛ با Drag & Drop ترتیب را تغییر بده.</p></div></div>
 
             <input
               ref={fileInputRef}
@@ -646,7 +780,7 @@ export default function IvilaPropertyForm() {
                       <div className={styles.galleryFooter}>
                         <div>
                           <strong>{index === 0 ? 'تصویر اصلی' : `تصویر ${index + 1}`}</strong>
-                          <span>{formatBytes(item.file.size)}</span>
+                          <span>{formatBytes(item.file?.size)}</span>
                         </div>
                         <div className={styles.galleryActions}>
                           {index > 0 && <button type="button" onClick={() => setCover(index)} disabled={busy}><Star size={13} /> کاور</button>}
@@ -665,7 +799,7 @@ export default function IvilaPropertyForm() {
           </section>
 
           <section className={`${styles.formCard} ${styles.fullCard}`}>
-            <div className={styles.sectionTitle}><span>۵</span><div><h2>توضیحات</h2><p>نکته‌هایی که فروش فایل را راحت‌تر می‌کنند.</p></div></div>
+            <div className={styles.sectionTitle}><span>۶</span><div><h2>توضیحات</h2><p>نکته‌هایی که فروش فایل را راحت‌تر می‌کنند.</p></div></div>
             <label className={styles.field}><span>توضیحات فایل</span><textarea required value={description} onChange={(e) => setDescription(e.target.value)} placeholder="ویژگی‌های مهم ملک، دسترسی، وضعیت بنا و..." rows={6} /></label>
           </section>
         </div>

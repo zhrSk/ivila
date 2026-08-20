@@ -17,6 +17,7 @@ import SiteHeader from '@/components/SiteHeader'
 import Footer from '@/components/Footer'
 import PropertyCard from '@/components/PropertyCard'
 import PropertyLocationMap from '@/components/PropertyLocationMap'
+import PropertyGallery from '@/components/PropertyGallery'
 import { getPublicProperty, getSimilarProperties } from '@/lib/property-repository'
 
 export const dynamic = 'force-dynamic'
@@ -29,7 +30,6 @@ export default async function PropertyPage({ params }: { params: Promise<{ id: s
   const EnvironmentIcon = property.lifestyle === 'coast' ? Waves : property.lifestyle === 'forest' ? Trees : Building2
   const similar = await getSimilarProperties(property, 3)
   const gallery = property.images?.length ? property.images : [property.image]
-  const sideImages = [gallery[1] || '/images/villa-04.jpg', gallery[2] || '/images/villa-06.jpg']
 
   return (
     <main className="detail-page">
@@ -40,14 +40,7 @@ export default async function PropertyPage({ params }: { params: Promise<{ id: s
           <span>کد فایل {property.code}</span>
         </div>
 
-        <div className="detail-gallery">
-          <img src={gallery[0] || property.image} alt={property.title}/>
-          <div className="detail-gallery-side">
-            <div className="gallery-tile"><img src={sideImages[0]} alt="نمای تکمیلی ملک"/></div>
-            <div className="gallery-tile"><img src={sideImages[1]} alt="فضای تکمیلی ملک"/></div>
-          </div>
-          <div className="gallery-counter">{Math.max(gallery.length, 1).toLocaleString('fa-IR')} تصویر</div>
-        </div>
+        <PropertyGallery images={gallery} title={property.title}/>
 
         <div className="detail-content-grid">
           <div className="detail-content-main">

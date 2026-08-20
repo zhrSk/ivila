@@ -37,8 +37,30 @@ try {
   await pool.query(`
     CREATE EXTENSION IF NOT EXISTS postgis;
 
-    ALTER TABLE properties
-      ADD COLUMN IF NOT EXISTS image_urls_json TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(20);
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS phone TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT;
+
+    UPDATE users
+      SET role = 'admin'
+      WHERE role IS NULL
+        AND id = (SELECT id FROM users WHERE role IS NULL ORDER BY id ASC LIMIT 1);
+    UPDATE users SET role = 'agent' WHERE role IS NULL;
+    ALTER TABLE users ALTER COLUMN role SET DEFAULT 'agent';
+
+    ALTER TABLE properties ADD COLUMN IF NOT EXISTS image_urls_json TEXT;
+    ALTER TABLE properties ADD COLUMN IF NOT EXISTS owner_name TEXT;
+    ALTER TABLE properties ADD COLUMN IF NOT EXISTS owner_phone TEXT;
+    ALTER TABLE properties ADD COLUMN IF NOT EXISTS owner_notes TEXT;
+    ALTER TABLE properties ADD COLUMN IF NOT EXISTS created_by_user_id TEXT;
+    ALTER TABLE properties ADD COLUMN IF NOT EXISTS public_lng DOUBLE PRECISION;
+    ALTER TABLE properties ADD COLUMN IF NOT EXISTS public_lat DOUBLE PRECISION;
+    ALTER TABLE properties ADD COLUMN IF NOT EXISTS location_source TEXT;
+    ALTER TABLE properties ADD COLUMN IF NOT EXISTS location_accuracy_m DOUBLE PRECISION;
+    ALTER TABLE properties ADD COLUMN IF NOT EXISTS location_captured_at TIMESTAMPTZ;
+
+    CREATE INDEX IF NOT EXISTS properties_created_by_user_id_idx ON properties(created_by_user_id);
+    CREATE INDEX IF NOT EXISTS users_role_idx ON users(role);
 
     CREATE TABLE IF NOT EXISTS ivila_spatial_features (
       id BIGSERIAL PRIMARY KEY,

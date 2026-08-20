@@ -1,10 +1,31 @@
-ivila Blob OIDC SDK-context fix
+ivila Team Workflow V1
+======================
 
-Changed files only:
-- app/(frontend)/api/ivila-media-health/route.ts
-- app/(frontend)/api/ivila-blob-upload/route.ts
-- components/admin/IvilaPropertyForm.tsx
+فقط فایل‌های داخل این ZIP را روی پروژه فعلی Replace/Add کن.
 
-No DB/schema changes. No new package.
-Do NOT enable IVILA_BOOTSTRAP_SCHEMA or IVILA_IMPORT_SPATIAL_OSM.
-After replacing, commit/push and redeploy Production.
+این Patch شامل:
+- نقش admin / agent
+- ادمین اصلی: مشاهده/ویرایش/انتشار همه فایل‌ها + ساخت حساب مشاور
+- مشاور: ثبت فایل فقط به صورت draft، ویرایش فقط پیش‌نویس‌های خودش
+- پروفایل شخصی مشاور
+- فایل‌های فعال برای مشاور با شماره مالک و لینک Google Maps / Neshan
+- ثبت GPS فعلی از موبایل + accuracy
+- اطلاعات مالک و یادداشت داخلی
+- امکانات ملک در فرم ثبت/ویرایش
+- صفحه ویرایش /admin/edit/:id
+- گالری عمومی با Lightbox برای دیدن همه تصاویر
+- بزرگ‌تر شدن تصویر کارت فایل در موبایل
+- مخفی شدن مختصات دقیق و اطلاعات مالک از API عمومی؛ نقشه عمومی از مختصات تقریبی استفاده می‌کند
+
+Database:
+نیازی به IVILA_BOOTSTRAP_SCHEMA نیست و آن را روشن نکن.
+prebuild فعلی schema:ensure ستون‌های جدید را فقط با ADD COLUMN IF NOT EXISTS می‌سازد و داده GIS را حذف نمی‌کند.
+
+پس از Deploy:
+1) با ادمین اصلی وارد /admin شو.
+2) /admin/agents را باز کن و یک مشاور بساز.
+3) با حساب مشاور Login کن؛ ثبت فایل باید فقط draft باشد.
+4) روی موبایل در /admin/new دکمه «موقعیت فعلی من» را بزن و Location permission بده.
+5) فایل مشاور باید در «فایل‌های من» دیده شود.
+6) ادمین اصلی آن را از /admin/edit/{id} بررسی و published کند.
+7) مشاور در «فایل‌های فعال» شماره مالک و لینک Maps/Neshan را می‌بیند.

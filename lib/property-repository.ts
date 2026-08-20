@@ -34,6 +34,8 @@ type PropertyDocument = {
   monthlyRentToman?: number | null
   locationText?: string | null
   coordinates?: [number, number] | null
+  publicLng?: number | null
+  publicLat?: number | null
   seaDistanceM?: number | null
   forestDistanceM?: number | null
   images?: Array<string | number | MediaLike> | null
@@ -113,7 +115,11 @@ function toFrontendProperty(doc: PropertyDocument): Property {
 
   const cardCover = directGallery[0] || (imageDocs.length ? mediaURL(imageDocs[0], 'card') : null)
   const fallback = doc.fallbackImage || '/images/villa-01.jpg'
-  const coordinates = Array.isArray(doc.coordinates) ? doc.coordinates : [51.9607, 36.5665]
+  const exactCoordinates = Array.isArray(doc.coordinates) ? doc.coordinates : null
+  const coordinates: [number, number] = [
+    Number(doc.publicLng ?? exactCoordinates?.[0] ?? 51.9607),
+    Number(doc.publicLat ?? exactCoordinates?.[1] ?? 36.5665),
+  ]
   const amount = doc.deal === 'rent'
     ? Number(doc.monthlyRentToman || 0)
     : Number(doc.salePriceToman || 0)

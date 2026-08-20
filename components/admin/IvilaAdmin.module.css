@@ -302,3 +302,63 @@
 @media (max-width: 390px) {
   .adminGallery { grid-template-columns: 1fr; }
 }
+
+/* Team roles / field-agent workflow */
+.viewTabs { display: flex; flex-wrap: wrap; gap: 7px; padding: 12px 18px; border-bottom: 1px solid var(--line); background: #fbfdfc; }
+.viewTabs button { min-height: 35px; padding: 0 13px; border: 1px solid var(--line); border-radius: 10px; background: #fff; color: #5c6c66; font: inherit; font-size: 10px; font-weight: 800; cursor: pointer; }
+.viewTabs .viewTabActive { background: #0b5748; border-color: #0b5748; color: #fff; }
+.internalPropertyList { display: grid; gap: 10px; padding: 15px; }
+.internalPropertyCard { padding: 16px; border: 1px solid #e3ebe7; border-radius: 17px; background: #fff; box-shadow: 0 6px 22px rgba(7,67,52,.035); }
+.internalPropertyTop { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+.internalPropertyTop > div { display: grid; gap: 4px; min-width: 0; }
+.internalPropertyTop h3 { margin: 0; font-size: 14px; }
+.internalPropertyTop small { color: var(--muted); font-size: 9.5px; }
+.internalFacts { display: flex; flex-wrap: wrap; gap: 8px 14px; margin-top: 13px; padding-top: 12px; border-top: 1px solid #edf2ef; }
+.internalFacts span, .internalFacts a { display: inline-flex; align-items: center; gap: 5px; color: #52645e; text-decoration: none; font-size: 10px; }
+.internalFacts a { color: #08735f; font-weight: 800; }
+.internalActions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 12px; }
+.internalActions a { min-height: 35px; padding: 0 10px; border: 1px solid #dce7e2; border-radius: 10px; display: inline-flex; align-items: center; gap: 6px; color: #435851; text-decoration: none; background: #fbfdfc; font-size: 9.5px; font-weight: 800; }
+.internalActions .internalActionPrimary { background: #e9f6f1; color: #08735f; border-color: #d1eadf; }
+.agentDraftNotice { padding: 12px 14px; border-radius: 12px; border: 1px solid #f0dfbe; background: #fff8ea; color: #8a6223; font-size: 10px; line-height: 1.8; }
+.mapLocateGroup { position: absolute; z-index: 5; left: 12px; top: 12px; display: flex; gap: 7px; }
+.mapLocateGroup .mapLocate { position: static; }
+.gpsButton { background: #087c70 !important; color: #fff !important; }
+.locationAudit { display: flex; flex-wrap: wrap; gap: 6px 14px; padding: 10px 12px; border-radius: 11px; background: #f1f8f5; color: #597068; font-size: 9.5px; }
+.locationAudit strong { color: #0a745f; }
+.amenityPicker { display: flex; flex-wrap: wrap; gap: 8px; }
+.amenityPicker button { min-height: 36px; padding: 0 11px; border: 1px solid #dce6e2; border-radius: 10px; background: #fbfdfc; color: #586962; display: inline-flex; align-items: center; gap: 5px; font: inherit; font-size: 9.5px; cursor: pointer; }
+.amenityPicker .amenityActive { background: #e8f6f0; border-color: #bfe3d4; color: #08745f; font-weight: 850; }
+.customAmenity { display: flex; gap: 8px; margin-top: 12px; }
+.customAmenity input { flex: 1; min-width: 0; height: 40px; padding: 0 11px; border: 1px solid #dfe7e3; border-radius: 11px; font: inherit; font-size: 10px; }
+.customAmenity button { min-width: 82px; border: 0; border-radius: 11px; background: #0b5748; color: #fff; font: inherit; font-size: 10px; font-weight: 800; }
+.formLoading { min-height: 70vh; display: grid; place-items: center; color: var(--muted); }
+.standaloneAdmin { min-height: 100vh; background: var(--page); padding-bottom: 50px; }
+.simpleTopbar { min-height: 66px; padding: 0 max(18px, calc((100vw - 1100px)/2)); display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); background: #fff; }
+.simpleTopbar a { display: inline-flex; align-items: center; gap: 6px; color: #50635c; text-decoration: none; font-size: 11px; }
+.simpleAdminGrid { width: min(1100px, calc(100% - 28px)); margin: 28px auto; display: grid; grid-template-columns: .8fr 1.2fr; gap: 16px; align-items: start; }
+.teamList { display: grid; gap: 8px; }
+.teamItem { min-height: 62px; padding: 9px 10px; border: 1px solid #e5ece9; border-radius: 13px; display: grid; grid-template-columns: 38px 1fr auto; align-items: center; gap: 9px; }
+.teamItem > div:nth-child(2) { display: grid; gap: 2px; }
+.teamItem strong { font-size: 11px; }
+.teamItem span { color: var(--muted); font-size: 8.5px; }
+.teamItem em { display: inline-flex; align-items: center; gap: 4px; padding: 5px 8px; border-radius: 999px; font-size: 8px; font-style: normal; font-weight: 850; }
+.adminRole { background: #e8f6f0; color: #08735f; }
+.agentRole { background: #eaf4f8; color: #31728a; }
+.profileCard { width: min(760px, calc(100% - 28px)); margin: 28px auto; }
+.profileHero { display: flex; align-items: center; gap: 13px; margin-bottom: 22px; }
+.profileAvatar { width: 56px; height: 56px; border-radius: 17px; display: grid; place-items: center; background: linear-gradient(135deg,#0c7b69,#108fa8); color: #fff; }
+.profileHero h1 { margin: 0; font-size: 19px; }
+.profileHero span { color: var(--muted); font-size: 10px; }
+
+@media (max-width: 720px) {
+  .internalPropertyList { padding: 10px; }
+  .internalPropertyCard { padding: 13px; }
+  .internalPropertyTop h3 { font-size: 13px; }
+  .internalFacts { display: grid; grid-template-columns: 1fr; }
+  .internalActions a { flex: 1 1 calc(50% - 5px); justify-content: center; min-height: 40px; }
+  .mapLocateGroup { right: 8px; left: 8px; top: 8px; }
+  .mapLocateGroup .mapLocate { flex: 1; justify-content: center; padding-inline: 7px; }
+  .simpleAdminGrid { grid-template-columns: 1fr; }
+  .teamItem { grid-template-columns: 36px 1fr; }
+  .teamItem em { grid-column: 2; justify-self: start; }
+}
