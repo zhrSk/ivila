@@ -38,6 +38,7 @@ type PropertyDocument = {
   forestDistanceM?: number | null
   images?: Array<string | number | MediaLike> | null
   imageUrls?: string[] | null
+  imageUrlsJson?: string | null
   fallbackImage?: string | null
   badges?: string[] | null
   amenities?: string[] | null
@@ -88,9 +89,22 @@ function buildPrice(doc: PropertyDocument) {
 }
 
 function toFrontendProperty(doc: PropertyDocument): Property {
-  const directGallery = Array.isArray(doc.imageUrls)
+  let jsonGallery: string[] = []
+  if (typeof doc.imageUrlsJson === 'string' && doc.imageUrlsJson.trim()) {
+    try {
+      const parsed = JSON.parse(doc.imageUrlsJson)
+      if (Array.isArray(parsed)) {
+        jsonGallery = parsed.filter((url): url is string => typeof url === 'string' && /^https?:\/\//i.test(url))
+      }
+    } catch {
+      jsonGallery = []
+    }
+  }
+
+  const legacyDirectGallery = Array.isArray(doc.imageUrls)
     ? doc.imageUrls.filter((url): url is string => typeof url === 'string' && /^https?:\/\//i.test(url))
     : []
+  const directGallery = jsonGallery.length ? jsonGallery : legacyDirectGallery
   const imageDocs = Array.isArray(doc.images) ? doc.images : []
   const legacyGallery = imageDocs
     .map(item => mediaURL(item, 'detail'))

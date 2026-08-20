@@ -434,7 +434,7 @@ export default function IvilaPropertyForm() {
         salePriceToman: deal === 'sale' ? numeric(salePrice) : undefined,
         depositToman: deal === 'rent' ? numeric(deposit) : undefined,
         monthlyRentToman: deal === 'rent' ? numeric(monthlyRent) : undefined,
-        imageUrls,
+        imageUrlsJson: JSON.stringify(imageUrls),
         status,
         featured: false,
       }

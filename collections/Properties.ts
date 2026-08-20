@@ -287,14 +287,12 @@ export const Properties: CollectionConfig = {
               },
             },
             {
-              name: 'imageUrls',
+              name: 'imageUrlsJson',
               type: 'text',
-              hasMany: true,
-              maxRows: 30,
               label: 'تصاویر Blob (OIDC)',
               admin: {
                 hidden: true,
-                description: 'URL تصاویر آپلودشده مستقیم روی Vercel Blob. ترتیب URLها همان ترتیب گالری است.',
+                description: 'آرایه URL تصاویر Blob به‌صورت JSON. این فیلد عمداً تک‌ستونه است تا Migration production بدون table push انجام شود.',
               },
             },
             {
