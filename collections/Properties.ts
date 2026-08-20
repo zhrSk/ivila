@@ -14,6 +14,24 @@ function userId(user: unknown) {
   return value === undefined || value === null ? '' : String(value)
 }
 
+function isPublished(data: unknown) {
+  return (data as { status?: string } | null | undefined)?.status === 'published'
+}
+
+function hasText(value: unknown) {
+  return typeof value === 'string' && value.trim().length > 0
+}
+
+function blobImageCount(value: unknown) {
+  if (typeof value !== 'string' || !value.trim()) return 0
+  try {
+    const parsed = JSON.parse(value)
+    return Array.isArray(parsed) ? parsed.filter((item) => typeof item === 'string' && /^https?:\/\//i.test(item)).length : 0
+  } catch {
+    return 0
+  }
+}
+
 function publishedOnlyWhere(): Where {
   return {
     status: { equals: 'published' },
@@ -127,8 +145,11 @@ export const Properties: CollectionConfig = {
                   name: 'code',
                   type: 'text',
                   label: 'کد فایل',
-                  required: true,
                   unique: true,
+                  validate: (value, { data, req }) =>
+                    roleOf(req.user) === 'admin' && isPublished(data) && !hasText(value)
+                      ? 'برای انتشار فایل، کد فایل اجباری است.'
+                      : true,
                   index: true,
                   admin: { width: '30%', placeholder: 'IV-109' },
                 },
@@ -136,7 +157,10 @@ export const Properties: CollectionConfig = {
                   name: 'title',
                   type: 'text',
                   label: 'عنوان فایل',
-                  required: true,
+                  validate: (value, { data, req }) =>
+                    roleOf(req.user) === 'admin' && isPublished(data) && !hasText(value)
+                      ? 'برای انتشار فایل، عنوان اجباری است.'
+                      : true,
                   index: true,
                   admin: { width: '70%' },
                 },
@@ -156,9 +180,11 @@ export const Properties: CollectionConfig = {
                   name: 'deal',
                   type: 'select',
                   label: 'نوع معامله',
-                  required: true,
+                  validate: (value, { data, req }) =>
+                    roleOf(req.user) === 'admin' && isPublished(data) && !hasText(value)
+                      ? 'برای انتشار فایل، نوع معامله اجباری است.'
+                      : true,
                   index: true,
-                  defaultValue: 'sale',
                   options: [
                     { label: 'فروش', value: 'sale' },
                     { label: 'اجاره', value: 'rent' },
@@ -169,7 +195,10 @@ export const Properties: CollectionConfig = {
                   name: 'type',
                   type: 'select',
                   label: 'نوع ملک',
-                  required: true,
+                  validate: (value, { data, req }) =>
+                    roleOf(req.user) === 'admin' && isPublished(data) && !hasText(value)
+                      ? 'برای انتشار فایل، نوع ملک اجباری است.'
+                      : true,
                   index: true,
                   options: [
                     { label: 'ویلا', value: 'villa' },
@@ -182,7 +211,10 @@ export const Properties: CollectionConfig = {
                   name: 'lifestyle',
                   type: 'select',
                   label: 'سبک منطقه',
-                  required: true,
+                  validate: (value, { data, req }) =>
+                    roleOf(req.user) === 'admin' && isPublished(data) && !hasText(value)
+                      ? 'برای انتشار فایل، سبک منطقه اجباری است.'
+                      : true,
                   index: true,
                   options: [
                     { label: 'ساحلی', value: 'coast' },
@@ -202,7 +234,7 @@ export const Properties: CollectionConfig = {
                   type: 'number',
                   label: 'متراژ (متر مربع)',
                   required: true,
-                  min: 0,
+                  min: 1,
                   index: true,
                   admin: { width: '50%' },
                 },
@@ -210,8 +242,10 @@ export const Properties: CollectionConfig = {
                   name: 'rooms',
                   type: 'number',
                   label: 'تعداد خواب',
-                  required: true,
-                  defaultValue: 0,
+                  validate: (value, { data, req }) =>
+                    roleOf(req.user) === 'admin' && isPublished(data) && (value === null || value === undefined)
+                      ? 'برای انتشار فایل، تعداد خواب را مشخص کن.'
+                      : true,
                   min: 0,
                   index: true,
                   admin: { width: '50%' },
@@ -222,7 +256,10 @@ export const Properties: CollectionConfig = {
               name: 'documentStatus',
               type: 'select',
               label: 'وضعیت سند',
-              required: true,
+              validate: (value, { data, req }) =>
+                roleOf(req.user) === 'admin' && isPublished(data) && !hasText(value)
+                  ? 'برای انتشار فایل، وضعیت سند را مشخص کن.'
+                  : true,
               index: true,
               options: [
                 { label: 'سند تک‌برگ', value: 'single-page' },
@@ -235,7 +272,10 @@ export const Properties: CollectionConfig = {
               name: 'description',
               type: 'textarea',
               label: 'توضیحات فایل',
-              required: true,
+              validate: (value, { data, req }) =>
+                roleOf(req.user) === 'admin' && isPublished(data) && !hasText(value)
+                  ? 'برای انتشار فایل، توضیحات اجباری است.'
+                  : true,
             },
           ],
         },
@@ -288,6 +328,10 @@ export const Properties: CollectionConfig = {
                   name: 'ownerName',
                   type: 'text',
                   label: 'نام مالک',
+                  validate: (value, { data, req }) =>
+                    (roleOf(req.user) === 'agent' || (roleOf(req.user) === 'admin' && isPublished(data))) && !hasText(value)
+                      ? 'نام مالک برای ثبت مشاور و انتشار فایل اجباری است.'
+                      : true,
                   admin: { width: '50%' },
                   access: { read: ({ req }) => Boolean(req.user) },
                 },
@@ -295,6 +339,10 @@ export const Properties: CollectionConfig = {
                   name: 'ownerPhone',
                   type: 'text',
                   label: 'شماره مالک',
+                  validate: (value, { data, req }) =>
+                    (roleOf(req.user) === 'agent' || (roleOf(req.user) === 'admin' && isPublished(data))) && !hasText(value)
+                      ? 'شماره مالک برای ثبت مشاور و انتشار فایل اجباری است.'
+                      : true,
                   admin: { width: '50%' },
                   access: { read: ({ req }) => Boolean(req.user) },
                 },
@@ -310,7 +358,10 @@ export const Properties: CollectionConfig = {
               name: 'locationText',
               type: 'text',
               label: 'آدرس/محدوده قابل نمایش',
-              required: true,
+              validate: (value, { data, req }) =>
+                roleOf(req.user) === 'admin' && isPublished(data) && !hasText(value)
+                  ? 'برای انتشار فایل، محدوده قابل نمایش را وارد کن.'
+                  : true,
               index: true,
               admin: { placeholder: 'رویان، نوار ساحلی' },
             },
@@ -372,6 +423,12 @@ export const Properties: CollectionConfig = {
               name: 'imageUrlsJson',
               type: 'text',
               label: 'تصاویر Blob (OIDC)',
+              validate: (value, { data, req }) => {
+                const mustHaveImage = roleOf(req.user) === 'agent' || (roleOf(req.user) === 'admin' && isPublished(data))
+                return mustHaveImage && blobImageCount(value) < 1
+                  ? 'برای ثبت مشاور یا انتشار فایل، حداقل یک عکس اجباری است.'
+                  : true
+              },
               admin: {
                 hidden: true,
                 description: 'آرایه URL تصاویر Blob به‌صورت JSON. این فیلد عمداً تک‌ستونه است تا Migration production بدون table push انجام شود.',

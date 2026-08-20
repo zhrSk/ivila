@@ -392,3 +392,13 @@
   .spatialWarning { align-items:flex-start; flex-direction:column; }
   .spatialWarning button { width:100%; min-height:38px; }
 }
+
+/* Consultant quick-capture / GPS quality */
+.field span small { font-size: 9px; font-weight: 500; color: #82958e; margin-inline-start: 5px; }
+.field span b, .sectionTitle h2 b { font-size: 9px; font-weight: 800; color: #0a806b; margin-inline-start: 5px; }
+.locationAudit { align-items: center; }
+.locationAudit em { flex-basis: 100%; font-style: normal; color: #7f918b; line-height: 1.8; }
+.locationAuditGood { background: #eaf8f2; border: 1px solid #c8eadc; }
+.locationAuditWeak { background: #fff8e9; border: 1px solid #f0dfb3; color: #75643c; }
+.locationAuditWeak strong { color: #9a6b12; }
+.gpsButton:disabled { opacity: .7; cursor: wait; }

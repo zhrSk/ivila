@@ -75,6 +75,18 @@ try {
     ALTER TABLE properties ADD COLUMN IF NOT EXISTS location_accuracy_m DOUBLE PRECISION;
     ALTER TABLE properties ADD COLUMN IF NOT EXISTS location_captured_at TIMESTAMPTZ;
 
+    -- Consultant drafts intentionally allow incomplete commercial data.
+    -- Required minimum is enforced by Payload validation: area + coordinates + owner + photo.
+    ALTER TABLE properties ALTER COLUMN code DROP NOT NULL;
+    ALTER TABLE properties ALTER COLUMN title DROP NOT NULL;
+    ALTER TABLE properties ALTER COLUMN deal DROP NOT NULL;
+    ALTER TABLE properties ALTER COLUMN "type" DROP NOT NULL;
+    ALTER TABLE properties ALTER COLUMN lifestyle DROP NOT NULL;
+    ALTER TABLE properties ALTER COLUMN rooms DROP NOT NULL;
+    ALTER TABLE properties ALTER COLUMN document_status DROP NOT NULL;
+    ALTER TABLE properties ALTER COLUMN description DROP NOT NULL;
+    ALTER TABLE properties ALTER COLUMN location_text DROP NOT NULL;
+
     CREATE INDEX IF NOT EXISTS properties_created_by_user_id_idx ON properties(created_by_user_id);
     CREATE INDEX IF NOT EXISTS users_role_idx ON users(role);
     CREATE UNIQUE INDEX IF NOT EXISTS users_username_unique_idx ON users(username) WHERE username IS NOT NULL;

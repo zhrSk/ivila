@@ -1,18 +1,29 @@
-ivila - Phone Login V1
+ivila consultant minimum fields + GPS accuracy fix
 
-Changed:
-- Login UI uses mobile number + password.
-- Payload auth enables username login; username is synchronized with phone.
-- Email is no longer required for new users.
-- Agent creation uses mobile number instead of email.
-- Team list and profile no longer show email.
-- Safe production schema adds users.username and drops NOT NULL from users.email without db push.
-- Existing users with phone numbers get username populated automatically.
-- Email login remains enabled in Payload only as a temporary migration fallback for the old admin account; UI does not expose it.
+Changed files only:
+- components/admin/IvilaPropertyForm.tsx
+- components/admin/IvilaAdmin.module.css
+- collections/Properties.ts
+- scripts/ensure-ivila-production-schema.ts
 
-Important after deploy:
-1) Open /admin/profile while still logged in as the existing admin.
-2) Save a valid mobile number once.
-3) Future logins can use that mobile number.
+Consultant minimum required fields:
+1) exact property location
+2) at least one photo
+3) area (m2)
+4) owner name + owner phone
 
-Do NOT enable IVILA_BOOTSTRAP_SCHEMA.
+All other commercial fields may stay incomplete while status is draft.
+Main admin must complete commercial fields before publishing.
+
+GPS changes:
+- uses watchPosition instead of accepting the first browser location
+- waits up to 20 seconds for a better high-accuracy fix
+- accepts immediately at <= 80m accuracy
+- rejects fixes worse than 250m instead of silently saving a network/Wi-Fi/IP location
+- shows GPS accuracy and guidance in the form
+- manual map selection remains available
+
+Database:
+The existing safe schema script only DROP NOT NULL on fields that are allowed to be incomplete in consultant drafts. It does NOT drop tables or GIS data.
+Keep IVILA_BOOTSTRAP_SCHEMA disabled.
+Keep IVILA_IMPORT_SPATIAL_OSM disabled if GIS import is already complete.
