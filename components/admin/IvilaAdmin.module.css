@@ -362,3 +362,33 @@
   .teamItem { grid-template-columns: 36px 1fr; }
   .teamItem em { grid-column: 2; justify-self: start; }
 }
+
+/* Internal owner information: rendered only inside authenticated ivila panel. */
+.ownerPrivateBox {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid #dce9e3;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #f7fbf9, #f4fafc);
+}
+.ownerPrivateHead { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px; }
+.ownerPrivateHead strong { font-size:10.5px; color:#183b32; }
+.ownerPrivateHead span { padding:4px 7px; border-radius:999px; background:#e8f4ef; color:#08735f; font-size:8px; font-weight:800; }
+.ownerPrivateGrid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+.ownerPrivateItem { min-width:0; padding:9px 10px; border-radius:11px; background:#fff; border:1px solid #e5eeea; }
+.ownerPrivateItem small, .ownerPrivateNotes small { display:block; color:#81908b; font-size:8px; margin-bottom:5px; }
+.ownerPrivateItem strong, .ownerPrivateItem a { display:flex; align-items:center; gap:5px; color:#243e36; font-size:10px; font-weight:800; text-decoration:none; min-width:0; }
+.ownerPrivateItem a { color:#08735f; direction:ltr; justify-content:flex-end; }
+.ownerPrivateNotes { margin-top:8px; padding:9px 10px; border-radius:11px; background:#fff; border:1px solid #e5eeea; }
+.ownerPrivateNotes p { margin:0; color:#50625c; font-size:9.5px; line-height:1.9; white-space:pre-wrap; }
+.spatialWarning { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+.spatialWarning button { border:0; border-radius:9px; padding:7px 10px; background:#9d4840; color:#fff; font:inherit; font-size:9px; font-weight:800; cursor:pointer; white-space:nowrap; }
+
+@media (max-width: 700px) {
+  .ownerPrivateGrid { grid-template-columns:1fr; }
+  .ownerPrivateBox { padding:10px; }
+  .ownerPrivateItem strong, .ownerPrivateItem a { font-size:10.5px; }
+  .ownerPrivateNotes p { font-size:10px; }
+  .spatialWarning { align-items:flex-start; flex-direction:column; }
+  .spatialWarning button { width:100%; min-height:38px; }
+}

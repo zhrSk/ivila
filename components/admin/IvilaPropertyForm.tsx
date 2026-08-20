@@ -186,28 +186,43 @@ export default function IvilaPropertyForm({ propertyId }: { propertyId?: string 
     setSeaDistance(null)
     setForestDistance(null)
 
-    try {
-      const response = await fetch(`/api/spatial/distances?lng=${encodeURIComponent(lng)}&lat=${encodeURIComponent(lat)}`, {
-        cache: 'no-store',
-        credentials: 'include',
-      })
-      const result = await response.json().catch(() => null) as null | {
-        ready?: boolean
-        seaDistanceM?: number | null
-        forestDistanceM?: number | null
-      }
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        const response = await fetch(`/api/spatial/distances?lng=${encodeURIComponent(lng)}&lat=${encodeURIComponent(lat)}`, {
+          cache: 'no-store',
+          credentials: 'include',
+        })
+        const result = await response.json().catch(() => null) as null | {
+          ready?: boolean
+          seaDistanceM?: number | null
+          forestDistanceM?: number | null
+          message?: string
+          detail?: string
+        }
 
-      if (requestId !== distanceRequestRef.current) return
-      if (!response.ok) {
+        if (requestId !== distanceRequestRef.current) return
+        if (response.ok) {
+          setSeaDistance(typeof result?.seaDistanceM === 'number' ? result.seaDistanceM : null)
+          setForestDistance(typeof result?.forestDistanceM === 'number' ? result.forestDistanceM : null)
+          setDistanceStatus(result?.ready ? 'ready' : 'missing')
+          return
+        }
+
+        // A transient serverless/DB connection error gets one automatic retry.
+        if (attempt === 0 && response.status >= 500) {
+          await new Promise((resolve) => window.setTimeout(resolve, 450))
+          continue
+        }
         setDistanceStatus('error')
         return
+      } catch {
+        if (requestId !== distanceRequestRef.current) return
+        if (attempt === 0) {
+          await new Promise((resolve) => window.setTimeout(resolve, 450))
+          continue
+        }
+        setDistanceStatus('error')
       }
-
-      setSeaDistance(typeof result?.seaDistanceM === 'number' ? result.seaDistanceM : null)
-      setForestDistance(typeof result?.forestDistanceM === 'number' ? result.forestDistanceM : null)
-      setDistanceStatus(result?.ready ? 'ready' : 'missing')
-    } catch {
-      if (requestId === distanceRequestRef.current) setDistanceStatus('error')
     }
   }
 
@@ -697,7 +712,10 @@ export default function IvilaPropertyForm({ propertyId }: { propertyId?: string 
               <div className={styles.spatialNotice}>لایه‌های GIS هنوز داخل Neon بارگذاری نشده‌اند. فایل را می‌توانی ذخیره کنی؛ بعد از Import لایه‌های ساحل/جنگل، فاصله‌ها خودکار محاسبه می‌شوند.</div>
             )}
             {distanceStatus === 'error' && (
-              <div className={styles.spatialWarning}>محاسبه فاصله موقتاً انجام نشد؛ ذخیره فایل متوقف نمی‌شود و Backend هنگام ذخیره دوباره تلاش می‌کند.</div>
+              <div className={styles.spatialWarning}>
+                <span>محاسبه فاصله موقتاً انجام نشد؛ ذخیره فایل متوقف نمی‌شود و Backend هنگام ذخیره دوباره تلاش می‌کند.</span>
+                {longitude !== null && latitude !== null && <button type="button" onClick={() => void calculateEnvironmentalDistances(longitude, latitude)}>تلاش مجدد</button>}
+              </div>
             )}
           </section>
 

@@ -4,6 +4,7 @@ import { getPayload } from 'payload'
 import { NextRequest, NextResponse } from 'next/server'
 
 export const dynamic = 'force-dynamic'
+export const runtime = 'nodejs'
 
 const ROYAN_REGION = {
   minLng: 51.15,
@@ -41,7 +42,8 @@ export async function GET(request: NextRequest) {
       },
     })
   } catch (error) {
+    const detail = error instanceof Error ? error.message : 'UNKNOWN_SPATIAL_ERROR'
     console.error('[ivila spatial] distance API failed', error)
-    return NextResponse.json({ message: 'SPATIAL_DISTANCE_FAILED' }, { status: 500 })
+    return NextResponse.json({ message: 'SPATIAL_DISTANCE_FAILED', detail }, { status: 500 })
   }
 }

@@ -1,6 +1,7 @@
 'use client'
 
 import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { isValidIranMobile, normalizeIranPhone } from '@/lib/phone'
 import styles from './AdminAuthForm.module.css'
 
 type Mode = 'login' | 'create'
@@ -26,7 +27,7 @@ export default function AdminAuthForm() {
   const [health, setHealth] = useState<Health | null>(null)
   const [healthLoading, setHealthLoading] = useState(true)
   const [name, setName] = useState('')
-  const [email, setEmail] = useState('')
+  const [identifier, setIdentifier] = useState('')
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -53,9 +54,7 @@ export default function AdminAuthForm() {
         if (alive) setHealthLoading(false)
       })
 
-    return () => {
-      alive = false
-    }
+    return () => { alive = false }
   }, [])
 
   const title = useMemo(
@@ -74,12 +73,25 @@ export default function AdminAuthForm() {
       return
     }
 
+    const rawIdentifier = identifier.trim()
+    const isLegacyEmail = mode === 'login' && rawIdentifier.includes('@')
+    const phone = normalizeIranPhone(rawIdentifier)
+
+    if (!isLegacyEmail && !isValidIranMobile(phone)) {
+      setError('شماره موبایل را به شکل 09121234567 وارد کن.')
+      return
+    }
+
     setError('')
     setBusy(true)
 
     try {
       const endpoint = mode === 'create' ? '/api/users/first-register' : '/api/users/login'
-      const body = mode === 'create' ? { name, email, password } : { email, password }
+      const body = mode === 'create'
+        ? { name: name.trim(), username: phone, phone, password, role: 'admin' }
+        : isLegacyEmail
+          ? { email: rawIdentifier, password }
+          : { username: phone, password }
 
       const response = await fetch(endpoint, {
         method: 'POST',
@@ -89,21 +101,12 @@ export default function AdminAuthForm() {
       })
 
       let result: any = null
-      try {
-        result = await response.json()
-      } catch {
-        // Keep a readable fallback below for non-JSON server failures.
-      }
+      try { result = await response.json() } catch { /* readable fallback below */ }
 
       if (!response.ok) {
-        setError(
-          getErrorMessage(
-            result,
-            mode === 'create'
-              ? 'ساخت حساب مدیر انجام نشد. اطلاعات را بررسی کن.'
-              : 'ایمیل یا رمز عبور صحیح نیست.',
-          ),
-        )
+        setError(getErrorMessage(result, mode === 'create'
+          ? 'ساخت حساب مدیر انجام نشد. اطلاعات را بررسی کن.'
+          : 'شماره موبایل یا رمز عبور صحیح نیست.'))
         return
       }
 
@@ -132,26 +135,14 @@ export default function AdminAuthForm() {
           <div className={styles.heading}>
             <span className={styles.kicker}>{mode === 'create' ? 'راه‌اندازی اولیه' : 'پنل مدیریت'}</span>
             <h2>{title}</h2>
-            <p>
-              {mode === 'create'
-                ? 'این حساب، مدیر اصلی پنل خواهد بود.'
-                : 'برای ثبت، ویرایش و مدیریت فایل‌های املاک وارد حساب مدیر شو.'}
-            </p>
+            <p>{mode === 'create' ? 'این حساب، مدیر اصلی پنل خواهد بود.' : 'با شماره موبایل و رمز عبور وارد شو.'}</p>
           </div>
 
-          {healthLoading && (
-            <div className={styles.status}>در حال بررسی اتصال Neon و Payload...</div>
-          )}
-
+          {healthLoading && <div className={styles.status}>در حال بررسی اتصال Neon و Payload...</div>}
           {!healthLoading && health && !health.ok && (
             <div className={styles.error}>
               <strong>Backend هنوز آماده نیست.</strong>
               <div>{health.message}</div>
-              {health.code === 'DB_SCHEMA_MISSING' && (
-                <div style={{ marginTop: 8 }}>
-                  یک‌بار پروژه را در حالت development با DATABASE_URL همین Neon اجرا کن تا Push اولیه Payload جدول‌ها را بسازد.
-                </div>
-              )}
               <div style={{ marginTop: 6, opacity: 0.75, direction: 'ltr' }}>Code: {health.code}</div>
             </div>
           )}
@@ -160,24 +151,20 @@ export default function AdminAuthForm() {
             {mode === 'create' && (
               <label className={styles.field}>
                 <span>نام مدیر</span>
-                <input
-                  autoComplete="name"
-                  value={name}
-                  onChange={event => setName(event.target.value)}
-                  placeholder="مثلاً مدیر ivila"
-                />
+                <input autoComplete="name" value={name} onChange={event => setName(event.target.value)} placeholder="مثلاً مدیر ivila" />
               </label>
             )}
 
             <label className={styles.field}>
-              <span>ایمیل</span>
+              <span>شماره موبایل</span>
               <input
                 required
-                type="email"
-                autoComplete="email"
-                value={email}
-                onChange={event => setEmail(event.target.value)}
-                placeholder="admin@example.com"
+                type="tel"
+                inputMode="numeric"
+                autoComplete="username"
+                value={identifier}
+                onChange={event => setIdentifier(event.target.value)}
+                placeholder="09121234567"
                 dir="ltr"
               />
             </label>
@@ -197,7 +184,6 @@ export default function AdminAuthForm() {
             </label>
 
             {error && <div className={styles.error}>{error}</div>}
-
             <button className={styles.submit} type="submit" disabled={busy || !backendReady}>
               {busy ? 'در حال انجام...' : mode === 'create' ? 'ساخت مدیر و ورود' : 'ورود به پنل'}
             </button>
@@ -206,18 +192,8 @@ export default function AdminAuthForm() {
           {backendReady && (
             <button
               type="button"
-              onClick={() => {
-                setError('')
-                setMode(current => (current === 'login' ? 'create' : 'login'))
-              }}
-              style={{
-                border: 0,
-                background: 'transparent',
-                font: 'inherit',
-                cursor: 'pointer',
-                color: '#315f55',
-                marginTop: 14,
-              }}
+              onClick={() => { setError(''); setMode(current => current === 'login' ? 'create' : 'login') }}
+              style={{ border: 0, background: 'transparent', font: 'inherit', cursor: 'pointer', color: '#315f55', marginTop: 14 }}
             >
               {mode === 'login' ? 'اولین راه‌اندازی است؟ ساخت مدیر' : 'قبلاً مدیر ساخته‌ای؟ ورود'}
             </button>

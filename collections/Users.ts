@@ -1,4 +1,5 @@
 import type { CollectionConfig } from 'payload'
+import { normalizeIranPhone } from '@/lib/phone'
 
 function roleOf(user: unknown) {
   return (user as { role?: string } | null | undefined)?.role
@@ -10,11 +11,16 @@ export const Users: CollectionConfig = {
     singular: 'کاربر',
     plural: 'کاربران',
   },
-  auth: true,
+  auth: {
+    loginWithUsername: {
+      allowEmailLogin: true, // migration fallback for the existing admin account
+      requireEmail: false,
+    },
+  },
   admin: {
-    useAsTitle: 'email',
+    useAsTitle: 'name',
     group: 'مدیریت',
-    defaultColumns: ['name', 'email', 'role', 'phone', 'updatedAt'],
+    defaultColumns: ['name', 'phone', 'role', 'updatedAt'],
   },
   access: {
     create: ({ req }) => roleOf(req.user) === 'admin',
@@ -30,6 +36,20 @@ export const Users: CollectionConfig = {
     },
     delete: ({ req }) => roleOf(req.user) === 'admin',
   },
+  hooks: {
+    beforeChange: [
+      ({ data }) => {
+        const phone = normalizeIranPhone(data?.phone)
+        if (phone) {
+          data.phone = phone
+          // Payload's username is the real auth identifier; we keep it synced
+          // with the phone so the rest of the product can simply use `phone`.
+          data.username = phone
+        }
+        return data
+      },
+    ],
+  },
   fields: [
     {
       name: 'name',
@@ -40,7 +60,12 @@ export const Users: CollectionConfig = {
     {
       name: 'phone',
       type: 'text',
-      label: 'شماره موبایل',
+      label: 'شماره موبایل ورود',
+      required: true,
+      unique: true,
+      admin: {
+        description: 'شماره ورود به پنل؛ مانند 09121234567',
+      },
     },
     {
       name: 'role',

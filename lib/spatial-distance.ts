@@ -1,28 +1,38 @@
+import { sql } from '@payloadcms/db-postgres'
 import type { Payload } from 'payload'
 
-type DistanceRow = {
-  sea_distance_m: number | null
-  forest_distance_m: number | null
-}
-
-type QueryResult<T> = { rows: T[] }
-type PgPoolLike = {
-  query<T = Record<string, unknown>>(text: string, values?: unknown[]): Promise<QueryResult<T>>
+type DrizzleExecutor = {
+  execute(query: unknown): Promise<unknown>
 }
 
 let spatialTableEnsured = false
 
-function pgPool(payload: Payload): PgPoolLike {
-  const pool = (payload.db as unknown as { pool?: PgPoolLike }).pool
-  if (!pool) throw new Error('POSTGRES_POOL_UNAVAILABLE')
-  return pool
+function drizzleOf(payload: Payload): DrizzleExecutor {
+  const drizzle = (payload.db as unknown as { drizzle?: DrizzleExecutor }).drizzle
+  if (!drizzle) throw new Error('POSTGRES_DRIZZLE_UNAVAILABLE')
+  return drizzle
+}
+
+function rowsOf(result: unknown): Record<string, unknown>[] {
+  if (Array.isArray(result)) return result.filter((row): row is Record<string, unknown> => Boolean(row && typeof row === 'object'))
+  if (result && typeof result === 'object') {
+    const rows = (result as { rows?: unknown }).rows
+    if (Array.isArray(rows)) return rows.filter((row): row is Record<string, unknown> => Boolean(row && typeof row === 'object'))
+  }
+  return []
+}
+
+function nullableNumber(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') return null
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : null
 }
 
 export async function ensureSpatialFeaturesTable(payload: Payload) {
   if (spatialTableEnsured) return
 
-  const pool = pgPool(payload)
-  await pool.query(`
+  const drizzle = drizzleOf(payload)
+  await drizzle.execute(sql.raw(`
     CREATE TABLE IF NOT EXISTS ivila_spatial_features (
       id BIGSERIAL PRIMARY KEY,
       kind TEXT NOT NULL CHECK (kind IN ('coastline', 'forest')),
@@ -34,17 +44,10 @@ export async function ensureSpatialFeaturesTable(payload: Payload) {
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       UNIQUE(kind, source, source_id)
-    );
-
-    CREATE INDEX IF NOT EXISTS ivila_spatial_features_kind_idx
-      ON ivila_spatial_features(kind);
-
-    CREATE INDEX IF NOT EXISTS ivila_spatial_features_geom_gix
-      ON ivila_spatial_features USING GIST (geom);
-
-    CREATE INDEX IF NOT EXISTS ivila_spatial_features_geog_gix
-      ON ivila_spatial_features USING GIST ((geom::geography));
-  `)
+    )
+  `))
+  await drizzle.execute(sql.raw(`CREATE INDEX IF NOT EXISTS ivila_spatial_features_kind_idx ON ivila_spatial_features(kind)`))
+  await drizzle.execute(sql.raw(`CREATE INDEX IF NOT EXISTS ivila_spatial_features_geom_gix ON ivila_spatial_features USING GIST (geom)`))
 
   spatialTableEnsured = true
 }
@@ -64,35 +67,37 @@ export async function computeEnvironmentalDistances(
   }
 
   await ensureSpatialFeaturesTable(payload)
-  const pool = pgPool(payload)
+  const drizzle = drizzleOf(payload)
 
-  const result = await pool.query<DistanceRow>(`
+  // Use the geometry GiST index only for finding the nearest candidate, then
+  // calculate the final distance as geography so the result is in metres.
+  // This avoids relying on adapter-specific node-postgres pool internals in
+  // Vercel serverless functions.
+  const result = await drizzle.execute(sql`
     WITH p AS (
-      SELECT ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography AS geog
+      SELECT ST_SetSRID(ST_MakePoint(${longitude}, ${latitude}), 4326) AS geom
     )
     SELECT
       (
-        SELECT ROUND(ST_Distance(p.geog, sf.geom::geography))::integer
+        SELECT ROUND(ST_Distance(sf.geom::geography, p.geom::geography))::integer
         FROM ivila_spatial_features sf
         WHERE sf.kind = 'coastline'
-          AND ST_DWithin(p.geog, sf.geom::geography, 150000)
-        ORDER BY sf.geom::geography <-> p.geog
+        ORDER BY sf.geom <-> p.geom
         LIMIT 1
       ) AS sea_distance_m,
       (
-        SELECT ROUND(ST_Distance(p.geog, sf.geom::geography))::integer
+        SELECT ROUND(ST_Distance(sf.geom::geography, p.geom::geography))::integer
         FROM ivila_spatial_features sf
         WHERE sf.kind = 'forest'
-          AND ST_DWithin(p.geog, sf.geom::geography, 100000)
-        ORDER BY sf.geom::geography <-> p.geog
+        ORDER BY sf.geom <-> p.geom
         LIMIT 1
       ) AS forest_distance_m
-    FROM p;
-  `, [longitude, latitude])
+    FROM p
+  `)
 
-  const row = result.rows[0]
+  const row = rowsOf(result)[0]
   return {
-    seaDistanceM: row?.sea_distance_m ?? null,
-    forestDistanceM: row?.forest_distance_m ?? null,
+    seaDistanceM: nullableNumber(row?.sea_distance_m),
+    forestDistanceM: nullableNumber(row?.forest_distance_m),
   }
 }

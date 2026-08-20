@@ -1,31 +1,18 @@
-ivila Team Workflow V1
-======================
+ivila - Phone Login V1
 
-فقط فایل‌های داخل این ZIP را روی پروژه فعلی Replace/Add کن.
+Changed:
+- Login UI uses mobile number + password.
+- Payload auth enables username login; username is synchronized with phone.
+- Email is no longer required for new users.
+- Agent creation uses mobile number instead of email.
+- Team list and profile no longer show email.
+- Safe production schema adds users.username and drops NOT NULL from users.email without db push.
+- Existing users with phone numbers get username populated automatically.
+- Email login remains enabled in Payload only as a temporary migration fallback for the old admin account; UI does not expose it.
 
-این Patch شامل:
-- نقش admin / agent
-- ادمین اصلی: مشاهده/ویرایش/انتشار همه فایل‌ها + ساخت حساب مشاور
-- مشاور: ثبت فایل فقط به صورت draft، ویرایش فقط پیش‌نویس‌های خودش
-- پروفایل شخصی مشاور
-- فایل‌های فعال برای مشاور با شماره مالک و لینک Google Maps / Neshan
-- ثبت GPS فعلی از موبایل + accuracy
-- اطلاعات مالک و یادداشت داخلی
-- امکانات ملک در فرم ثبت/ویرایش
-- صفحه ویرایش /admin/edit/:id
-- گالری عمومی با Lightbox برای دیدن همه تصاویر
-- بزرگ‌تر شدن تصویر کارت فایل در موبایل
-- مخفی شدن مختصات دقیق و اطلاعات مالک از API عمومی؛ نقشه عمومی از مختصات تقریبی استفاده می‌کند
+Important after deploy:
+1) Open /admin/profile while still logged in as the existing admin.
+2) Save a valid mobile number once.
+3) Future logins can use that mobile number.
 
-Database:
-نیازی به IVILA_BOOTSTRAP_SCHEMA نیست و آن را روشن نکن.
-prebuild فعلی schema:ensure ستون‌های جدید را فقط با ADD COLUMN IF NOT EXISTS می‌سازد و داده GIS را حذف نمی‌کند.
-
-پس از Deploy:
-1) با ادمین اصلی وارد /admin شو.
-2) /admin/agents را باز کن و یک مشاور بساز.
-3) با حساب مشاور Login کن؛ ثبت فایل باید فقط draft باشد.
-4) روی موبایل در /admin/new دکمه «موقعیت فعلی من» را بزن و Location permission بده.
-5) فایل مشاور باید در «فایل‌های من» دیده شود.
-6) ادمین اصلی آن را از /admin/edit/{id} بررسی و published کند.
-7) مشاور در «فایل‌های فعال» شماره مالک و لینک Maps/Neshan را می‌بیند.
+Do NOT enable IVILA_BOOTSTRAP_SCHEMA.

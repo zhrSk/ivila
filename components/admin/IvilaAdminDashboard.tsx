@@ -43,6 +43,7 @@ type PropertyDoc = {
   createdByUserId?: string
   ownerPhone?: string
   ownerName?: string
+  ownerNotes?: string
   coordinates?: [number, number]
   updatedAt?: string
 }
@@ -50,7 +51,7 @@ type PropertyDoc = {
 type UserInfo = {
   id?: string | number
   name?: string
-  email?: string
+  username?: string
   role?: UserRole
   phone?: string
 }
@@ -152,7 +153,7 @@ export default function IvilaAdminDashboard() {
           <a className={styles.navItem} href="/" target="_blank" rel="noreferrer"><ExternalLink size={19}/><span>مشاهده سایت</span></a>
         </nav>
         <div className={styles.sidebarFooter}>
-          <div className={styles.userMini}><div className={styles.avatar}>{(user?.name || user?.email || 'i').slice(0,1)}</div><div><strong>{user?.name || 'کاربر ivila'}</strong><span>{isAdmin ? 'ادمین اصلی' : 'مشاور'}</span></div></div>
+          <div className={styles.userMini}><div className={styles.avatar}>{(user?.name || user?.phone || user?.username || 'i').slice(0,1)}</div><div><strong>{user?.name || 'کاربر ivila'}</strong><span>{isAdmin ? 'ادمین اصلی' : 'مشاور'}</span></div></div>
           <a className={styles.logout} href="/ivila-logout"><LogOut size={17}/> خروج</a>
         </div>
       </aside>
@@ -200,12 +201,19 @@ export default function IvilaAdminDashboard() {
                 <div className={styles.internalFacts}>
                   <span><MapPin size={15}/>{property.locationText || '—'}</span>
                   <span><CircleDollarSign size={15}/>{propertyPrice(property)}</span>
-                  {property.status === 'published' && property.ownerPhone && <a href={`tel:${property.ownerPhone}`}><Phone size={15}/>{property.ownerName || 'مالک'} · {property.ownerPhone}</a>}
+                </div>
+                <div className={styles.ownerPrivateBox}>
+                  <div className={styles.ownerPrivateHead}><strong>اطلاعات داخلی مالک</strong><span>فقط تیم ivila</span></div>
+                  <div className={styles.ownerPrivateGrid}>
+                    <div className={styles.ownerPrivateItem}><small>نام مالک</small><strong><UserRound size={15}/>{property.ownerName || 'ثبت نشده'}</strong></div>
+                    <div className={styles.ownerPrivateItem}><small>شماره مالک</small>{property.ownerPhone ? <a href={`tel:${property.ownerPhone}`} dir="ltr"><Phone size={15}/>{property.ownerPhone}</a> : <strong>ثبت نشده</strong>}</div>
+                  </div>
+                  {property.ownerNotes && <div className={styles.ownerPrivateNotes}><small>یادداشت داخلی</small><p>{property.ownerNotes}</p></div>}
                 </div>
                 <div className={styles.internalActions}>
                   {canEdit && <a className={styles.internalActionPrimary} href={`/admin/edit/${property.id}`}><Pencil size={15}/> ویرایش فایل</a>}
-                  {property.status === 'published' && gmap && <a href={gmap} target="_blank" rel="noreferrer"><Navigation size={15}/> Google Maps</a>}
-                  {property.status === 'published' && neshan && <a href={neshan} target="_blank" rel="noreferrer"><MapPin size={15}/> نشان</a>}
+                  {gmap && <a href={gmap} target="_blank" rel="noreferrer"><Navigation size={15}/> Google Maps</a>}
+                  {neshan && <a href={neshan} target="_blank" rel="noreferrer"><MapPin size={15}/> نشان</a>}
                   {property.status === 'published' && property.slug && <a href={`/properties/${property.slug}`} target="_blank" rel="noreferrer"><ExternalLink size={15}/> صفحه عمومی</a>}
                 </div>
               </article>

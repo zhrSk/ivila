@@ -40,6 +40,22 @@ try {
     ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(20);
     ALTER TABLE users ADD COLUMN IF NOT EXISTS phone TEXT;
     ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS username TEXT;
+    ALTER TABLE users ALTER COLUMN email DROP NOT NULL;
+
+    UPDATE users
+      SET username = CASE
+        WHEN regexp_replace(phone, '[^0-9]', '', 'g') ~ '^00989[0-9]{9}$'
+          THEN '0' || substring(regexp_replace(phone, '[^0-9]', '', 'g') from 5)
+        WHEN regexp_replace(phone, '[^0-9]', '', 'g') ~ '^989[0-9]{9}$'
+          THEN '0' || substring(regexp_replace(phone, '[^0-9]', '', 'g') from 3)
+        WHEN regexp_replace(phone, '[^0-9]', '', 'g') ~ '^9[0-9]{9}$'
+          THEN '0' || regexp_replace(phone, '[^0-9]', '', 'g')
+        ELSE regexp_replace(phone, '[^0-9]', '', 'g')
+      END
+      WHERE username IS NULL AND phone IS NOT NULL AND phone <> '';
+
+    UPDATE users SET phone = username WHERE (phone IS NULL OR phone = '') AND username IS NOT NULL;
 
     UPDATE users
       SET role = 'admin'
@@ -61,6 +77,8 @@ try {
 
     CREATE INDEX IF NOT EXISTS properties_created_by_user_id_idx ON properties(created_by_user_id);
     CREATE INDEX IF NOT EXISTS users_role_idx ON users(role);
+    CREATE UNIQUE INDEX IF NOT EXISTS users_username_unique_idx ON users(username) WHERE username IS NOT NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS users_phone_unique_idx ON users(phone) WHERE phone IS NOT NULL AND phone <> '';
 
     CREATE TABLE IF NOT EXISTS ivila_spatial_features (
       id BIGSERIAL PRIMARY KEY,
