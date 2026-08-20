@@ -1,13 +1,18 @@
-ivila account/mobile admin fix v1
+ivila CRM / Customer Visits V1
 
-Changes:
-- Login renders immediately; no Payload health pre-check delay and no first-admin creation toggle.
-- Mobile dashboard nav fixed: bottom nav no longer gets trapped inside the top sticky header.
-- Agents can change their own password from Profile (current password required).
-- Admin can suspend/reactivate or delete consultant accounts.
-- Suspended accounts are blocked at login and property API access.
-- Agent creation form prevents browser autofill with current admin credentials.
-- Agent list only loads consultants, with skeleton while fetching.
-- Safe schema adds users.is_active only; no db push / no drops.
+Replace/add only the files in this ZIP.
 
-Keep IVILA_BOOTSTRAP_SCHEMA disabled.
+What this adds:
+- /admin/crm (rewritten internally to /ivila-panel/crm)
+- Customers per consultant
+- Property visits / calls
+- Visit outcome and offer
+- Next follow-up date
+- Mark follow-up as done
+- Admin can filter CRM by consultant
+- Quick "register visit" action on published property cards
+- Safe production DDL creates only ivila_customers and ivila_visits; nothing is dropped
+
+No new npm package is required.
+Do NOT enable IVILA_BOOTSTRAP_SCHEMA.
+Keep IVILA_IMPORT_SPATIAL_OSM off if GIS import has already completed.

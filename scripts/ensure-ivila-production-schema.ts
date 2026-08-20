@@ -115,6 +115,50 @@ try {
     CREATE UNIQUE INDEX IF NOT EXISTS users_username_unique_idx ON users(username) WHERE username IS NOT NULL;
     CREATE UNIQUE INDEX IF NOT EXISTS users_phone_unique_idx ON users(phone) WHERE phone IS NOT NULL AND phone <> '';
 
+    CREATE TABLE IF NOT EXISTS ivila_customers (
+      id BIGSERIAL PRIMARY KEY,
+      full_name TEXT NOT NULL,
+      phone TEXT NOT NULL,
+      budget_toman BIGINT,
+      desired_deal TEXT,
+      desired_type TEXT,
+      desired_area TEXT,
+      notes TEXT,
+      created_by_user_id TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS ivila_customers_agent_phone_uq
+      ON ivila_customers(created_by_user_id, phone);
+    CREATE INDEX IF NOT EXISTS ivila_customers_created_by_idx
+      ON ivila_customers(created_by_user_id);
+    CREATE INDEX IF NOT EXISTS ivila_customers_phone_idx
+      ON ivila_customers(phone);
+
+    CREATE TABLE IF NOT EXISTS ivila_visits (
+      id BIGSERIAL PRIMARY KEY,
+      customer_id BIGINT NOT NULL REFERENCES ivila_customers(id) ON DELETE CASCADE,
+      property_id TEXT NOT NULL,
+      agent_user_id TEXT NOT NULL,
+      visit_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      result TEXT NOT NULL DEFAULT 'planned'
+        CHECK (result IN ('planned', 'visited', 'interested', 'offer', 'not_interested', 'cancelled')),
+      note TEXT,
+      offer_toman BIGINT,
+      followup_at TIMESTAMPTZ,
+      followup_done_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+
+    CREATE INDEX IF NOT EXISTS ivila_visits_agent_idx ON ivila_visits(agent_user_id);
+    CREATE INDEX IF NOT EXISTS ivila_visits_customer_idx ON ivila_visits(customer_id);
+    CREATE INDEX IF NOT EXISTS ivila_visits_property_idx ON ivila_visits(property_id);
+    CREATE INDEX IF NOT EXISTS ivila_visits_followup_idx
+      ON ivila_visits(followup_at) WHERE followup_done_at IS NULL;
+    CREATE INDEX IF NOT EXISTS ivila_visits_visit_at_idx ON ivila_visits(visit_at DESC);
+
     CREATE TABLE IF NOT EXISTS ivila_spatial_features (
       id BIGSERIAL PRIMARY KEY,
       kind TEXT NOT NULL CHECK (kind IN ('coastline', 'forest')),

@@ -3,6 +3,7 @@
 import {
   Archive,
   Building2,
+  CalendarDays,
   CheckCircle2,
   CircleDollarSign,
   Clock3,
@@ -210,9 +211,10 @@ export default function IvilaAdminDashboard() {
         <nav className={styles.nav}>
           <a className={`${styles.navItem} ${styles.navActive}`} href="/admin"><Home size={19}/><span>داشبورد</span></a>
           <a className={styles.navItem} href="/admin/new"><Building2 size={19}/><span>ثبت فایل</span></a>
+          <a className={styles.navItem} href="/admin/crm"><CalendarDays size={19}/><span>بازدیدها</span></a>
           <a className={styles.navItem} href="/admin/profile"><UserRound size={19}/><span>پروفایل من</span></a>
           {isAdmin && <a className={styles.navItem} href="/admin/agents"><UsersRound size={19}/><span>مشاورها</span></a>}
-          <a className={styles.navItem} href="/" target="_blank" rel="noreferrer"><ExternalLink size={19}/><span>مشاهده سایت</span></a>
+          <a className={`${styles.navItem} ${styles.siteNavItem}`} href="/" target="_blank" rel="noreferrer"><ExternalLink size={19}/><span>مشاهده سایت</span></a>
         </nav>
         <div className={styles.sidebarFooter}>
           <div className={styles.userMini}><div className={styles.avatar}>{(user?.name || user?.phone || user?.username || 'i').slice(0,1)}</div><div><strong>{user?.name || 'کاربر ivila'}</strong><span>{isAdmin ? 'ادمین اصلی' : 'مشاور'}</span></div></div>
@@ -279,6 +281,7 @@ export default function IvilaAdminDashboard() {
                 </div>
                 <div className={styles.internalActions}>
                   {canEdit && <a className={styles.internalActionPrimary} href={`/admin/edit/${property.id}`}><Pencil size={15}/> ویرایش فایل</a>}
+                  {property.status === 'published' && <a href={`/admin/crm?property=${property.id}`}><CalendarDays size={15}/> ثبت بازدید</a>}
                   {gmap && <a href={gmap} target="_blank" rel="noreferrer"><Navigation size={15}/> Google Maps</a>}
                   {neshan && <a href={neshan} target="_blank" rel="noreferrer"><MapPin size={15}/> نشان</a>}
                   {property.status === 'published' && property.slug && <a href={`/properties/${property.slug}`} target="_blank" rel="noreferrer"><ExternalLink size={15}/> صفحه عمومی</a>}
