@@ -49,7 +49,7 @@ export default function IvilaProfile() {
 
   return <main className={styles.standaloneAdmin} dir="rtl"><header className={styles.simpleTopbar}><a href="/admin"><ArrowRight size={18}/> بازگشت</a><strong>پروفایل من</strong></header>
     <section className={`${styles.formCard} ${styles.profileCard}`}>
-      <div className={styles.profileHero}><div className={styles.profileAvatar}><UserRound size={28}/></div><div><h1>{name || 'پروفایل ivila'}</h1><span>{role==='admin'?'ادمین اصلی':'مشاور'}</span></div></div>
+      <div className={styles.profileHero}><div className={styles.profileAvatar}><UserRound size={28}/></div><div><h1>{name || 'پروفایل کاربری'}</h1><span>{role==='admin'?'ادمین اصلی':'مشاور'}</span></div></div>
       {error&&<div className={styles.errorBox}>{error}</div>}{saved&&<div className={styles.successBox}>پروفایل ذخیره شد. از این پس با همین شماره وارد شو.</div>}
       <form className={styles.fieldsGrid} onSubmit={submit}><label className={styles.field}><span>نام و نام خانوادگی</span><input required value={name} onChange={e=>setName(e.target.value)}/></label><label className={styles.field}><span>شماره موبایل ورود</span><input required type="tel" inputMode="numeric" value={phone} onChange={e=>setPhone(e.target.value)} dir="ltr" placeholder="09121234567"/></label><label className={`${styles.field} ${styles.span2}`}><span>درباره من</span><textarea rows={4} value={bio} onChange={e=>setBio(e.target.value)} placeholder="مثلاً محدوده تخصصی، سابقه و توضیح کوتاه"/></label><button className={`${styles.primaryButton} ${styles.span2}`}><Save size={17}/> ذخیره پروفایل</button></form>
     </section>

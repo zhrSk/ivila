@@ -65,19 +65,19 @@ export default function AdminAuthForm() {
     <main className={styles.page} dir="rtl">
       <section className={styles.shell}>
         <aside className={styles.brandPanel}>
-          <div className={styles.brand}>ivila</div>
-          <p className={styles.brandEyebrow}>ROYAN REAL ESTATE</p>
+          <div className={styles.brand}>املاک شمال</div>
+          <p className={styles.brandEyebrow}>PROPERTY MANAGEMENT</p>
           <h1>مدیریت فایل‌های ملکی، سریع و نقشه‌محور.</h1>
-          <p>پنل مدیریت فایل‌های ساحلی، جنگلی و روستایی ivila متصل به دیتابیس واقعی.</p>
+          <p>پنل مدیریت فایل‌های ساحلی، جنگلی و روستایی متصل به دیتابیس واقعی.</p>
           <div className={styles.brandGlowOne} />
           <div className={styles.brandGlowTwo} />
         </aside>
 
         <div className={styles.formPanel}>
-          <div className={styles.mobileBrand}>ivila</div>
+          <div className={styles.mobileBrand}>املاک شمال</div>
           <div className={styles.heading}>
             <span className={styles.kicker}>پنل مدیریت</span>
-            <h2>ورود به مدیریت ivila</h2>
+            <h2>ورود به مدیریت املاک</h2>
             <p>با شماره موبایل و رمز عبور وارد شو.</p>
           </div>
 

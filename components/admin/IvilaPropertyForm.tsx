@@ -55,8 +55,8 @@ type PreparedImage = {
 const DEFAULT_AMENITIES = ['پارکینگ','آسانسور','انباری','بالکن','تراس','حیاط','حیاط خصوصی','استخر','لابی','نگهبانی','اتاق مستر','مبله','دسترسی آسفالت','نورگیری عالی','آب و برق مستقل']
 
 const MAX_IMAGES = 30
-const MAX_UPLOAD_BYTES = 3_800_000
-const MAX_IMAGE_SIDE = 3200
+const MAX_UPLOAD_BYTES = 4_050_000
+const MAX_IMAGE_SIDE = 3840
 
 function numeric(value: string) {
   if (!value.trim()) return undefined
@@ -169,17 +169,17 @@ async function prepareImage(file: File): Promise<PreparedImage> {
   const decoded = await decodeOrientedImage(file)
   try {
     let canvas = scaledCanvas(decoded.source, decoded.width, decoded.height, MAX_IMAGE_SIDE)
-    let encoded = await encodeForWeb(canvas, 0.90)
+    let encoded = await encodeForWeb(canvas, 0.93)
 
     // Phone photos can be very detailed. Reduce quality first, then dimensions,
     // until every single upload comfortably fits the Vercel request limit.
-    for (const quality of [0.86, 0.82, 0.78, 0.74]) {
+    for (const quality of [0.90, 0.87, 0.84, 0.80, 0.76]) {
       if (encoded.blob.size <= MAX_UPLOAD_BYTES) break
       encoded = await encodeForWeb(canvas, quality)
     }
 
-    while (encoded.blob.size > MAX_UPLOAD_BYTES && Math.max(canvas.width, canvas.height) > 1800) {
-      const nextMaxSide = Math.max(1800, Math.round(Math.max(canvas.width, canvas.height) * 0.86))
+    while (encoded.blob.size > MAX_UPLOAD_BYTES && Math.max(canvas.width, canvas.height) > 2200) {
+      const nextMaxSide = Math.max(2200, Math.round(Math.max(canvas.width, canvas.height) * 0.88))
       const reduced = document.createElement('canvas')
       const scale = nextMaxSide / Math.max(canvas.width, canvas.height)
       reduced.width = Math.max(1, Math.round(canvas.width * scale))
@@ -190,7 +190,7 @@ async function prepareImage(file: File): Promise<PreparedImage> {
       context.imageSmoothingQuality = 'high'
       context.drawImage(canvas, 0, 0, reduced.width, reduced.height)
       canvas = reduced
-      encoded = await encodeForWeb(canvas, 0.80)
+      encoded = await encodeForWeb(canvas, 0.84)
     }
 
     if (encoded.blob.size > MAX_UPLOAD_BYTES) throw new Error('حجم این تصویر بعد از فشرده‌سازی هنوز زیاد است.')
@@ -833,7 +833,7 @@ export default function IvilaPropertyForm({ propertyId }: { propertyId?: string 
     <main className={styles.formPage} dir="rtl">
       <header className={styles.formTopbar}>
         <a href="/admin" className={styles.backButton}><ArrowRight size={18} /> بازگشت</a>
-        <div className={styles.formBrand}>ivila</div>
+        <div className={styles.formBrand}>املاک شمال</div>
         <span className={styles.saveHint}>ثبت سریع فایل</span>
       </header>
 
@@ -841,7 +841,7 @@ export default function IvilaPropertyForm({ propertyId }: { propertyId?: string 
         <section className={styles.formIntro}>
           <div>
             <span className={styles.eyebrow}>{propertyId ? 'ویرایش فایل' : 'فایل جدید'}</span>
-            <h1>{propertyId ? 'ویرایش ملک در ivila' : 'ثبت ملک در ivila'}</h1>
+            <h1>{propertyId ? 'ویرایش ملک' : 'ثبت ملک'}</h1>
             <p>{userRole === 'agent' ? 'برای مشاور فقط لوکیشن، حداقل یک عکس، متراژ، نام و شماره مالک اجباری است؛ توضیحات و همه اطلاعات دیگر اختیاری‌اند.' : 'اطلاعات اصلی، تصاویر و محل دقیق ملک را در یک مرحله ثبت کن.'}</p>
           </div>
           <FilePlus2 size={42} />
@@ -871,7 +871,7 @@ export default function IvilaPropertyForm({ propertyId }: { propertyId?: string 
               <label className={styles.field}><span>وضعیت سند</span><select value={documentStatus} onChange={(e) => setDocumentStatus(e.target.value as DocumentStatus)}><option value="">بعداً تکمیل می‌شود</option><option value="single-page">سند تک‌برگ</option><option value="council">سند شورایی</option><option value="contract">قولنامه‌ای</option><option value="in-progress">در حال اخذ سند</option></select></label>
               <label className={styles.field}><span>نام مالک <b>اجباری</b></span><input required value={ownerName} onChange={(e) => setOwnerName(e.target.value)} placeholder="نام مالک" /></label>
               <label className={styles.field}><span>شماره مالک <b>اجباری</b></span><input required value={ownerPhone} onChange={(e) => setOwnerPhone(e.target.value)} inputMode="tel" dir="ltr" placeholder="09..." /></label>
-              <label className={`${styles.field} ${styles.span2}`}><span>یادداشت داخلی مالک</span><textarea value={ownerNotes} onChange={(e) => setOwnerNotes(e.target.value)} placeholder="شرایط بازدید، زمان تماس، توضیحاتی که فقط تیم ivila می‌بیند" rows={3} /></label>
+              <label className={`${styles.field} ${styles.span2}`}><span>یادداشت داخلی مالک</span><textarea value={ownerNotes} onChange={(e) => setOwnerNotes(e.target.value)} placeholder="شرایط بازدید، زمان تماس، توضیحاتی که فقط تیم داخلی می‌بیند" rows={3} /></label>
             </div>
           </section>
 
@@ -1033,6 +1033,9 @@ export default function IvilaPropertyForm({ propertyId }: { propertyId?: string 
                     <strong>کاور کارت ۴:۳</strong>
                     <p>این فقط قاب نمایش کارت است؛ فایل اصلی برای گالری Crop نمی‌شود. عکس اول همیشه کاور است.</p>
                     <small>{imageDraftMeta(images[0])} · EXIF/GPS حذف شده</small>
+                    {images[0].width && images[0].height && (images[0].width < 1800 || images[0].width * images[0].height < 2_000_000) && (
+                      <div className={styles.mediaWarning}>کیفیت این کاور برای نمایش بزرگ پایین است. اگر نسخه اصلی روی گوشی موجود است، همان عکس را دوباره انتخاب کن.</div>
+                    )}
                   </div>
                 </div>
                 <div className={styles.gallerySummary}>

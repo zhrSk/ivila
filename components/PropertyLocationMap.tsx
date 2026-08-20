@@ -95,7 +95,7 @@ export default function PropertyLocationMap({ property }: { property: Property }
           <span>موقعیت مکانی</span>
           <h3>محدوده تقریبی فایل</h3>
         </div>
-        <div className="detail-map-note"><ShieldCheck size={15}/> نقطه دقیق فقط برای تیم ivila قابل مشاهده است</div>
+        <div className="detail-map-note"><ShieldCheck size={15}/> نقطه دقیق فقط برای تیم داخلی قابل مشاهده است</div>
       </div>
       <div className="detail-map-shell detail-map-private">
         <div ref={containerRef} className="detail-map-canvas" />

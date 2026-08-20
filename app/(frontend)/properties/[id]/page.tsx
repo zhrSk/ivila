@@ -81,7 +81,7 @@ export default async function PropertyPage({ params }: { params: Promise<{ id: s
             <small>قیمت پیشنهادی</small>
             <div className="contact-price">{property.price}</div>
             <div className="contact-subline"><span>{property.area.toLocaleString('fa-IR')} متر</span><i/> <span>{property.type}</span><i/> <span>{property.deal}</span></div>
-            <div className="agent-row"><div className="agent-avatar">i</div><div><strong>مشاور ivila</strong><span>پاسخ‌گویی و هماهنگی بازدید</span></div></div>
+            <div className="agent-row"><div className="agent-avatar">م</div><div><strong>مشاور املاک</strong><span>پاسخ‌گویی و هماهنگی بازدید</span></div></div>
             <button className="primary-contact"><Phone size={17}/> تماس با مشاور</button>
             <button className="secondary-contact"><Share2 size={17}/> اشتراک فایل</button>
             <div className="demo-alert">اطلاعات تماس و موقعیت دقیق در نسخه نمایشی عمومی نشده‌اند.</div>

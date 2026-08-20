@@ -207,7 +207,7 @@ export default function IvilaAdminDashboard() {
   return (
     <main className={styles.page} dir="rtl">
       <aside className={styles.sidebar}>
-        <a className={styles.brand} href="/admin"><span className={styles.brandMark}>i</span><span>ivila</span></a>
+        <a className={styles.brand} href="/admin"><span className={styles.brandMark}>م</span><span>املاک شمال</span></a>
         <nav className={styles.nav}>
           <a className={`${styles.navItem} ${styles.navActive}`} href="/admin"><Home size={19}/><span>داشبورد</span></a>
           <a className={styles.navItem} href="/admin/new"><Building2 size={19}/><span>ثبت فایل</span></a>
@@ -217,14 +217,14 @@ export default function IvilaAdminDashboard() {
           <a className={`${styles.navItem} ${styles.siteNavItem}`} href="/" target="_blank" rel="noreferrer"><ExternalLink size={19}/><span>مشاهده سایت</span></a>
         </nav>
         <div className={styles.sidebarFooter}>
-          <div className={styles.userMini}><div className={styles.avatar}>{(user?.name || user?.phone || user?.username || 'i').slice(0,1)}</div><div><strong>{user?.name || 'کاربر ivila'}</strong><span>{isAdmin ? 'ادمین اصلی' : 'مشاور'}</span></div></div>
+          <div className={styles.userMini}><div className={styles.avatar}>{(user?.name || user?.phone || user?.username || 'i').slice(0,1)}</div><div><strong>{user?.name || 'کاربر پنل'}</strong><span>{isAdmin ? 'ادمین اصلی' : 'مشاور'}</span></div></div>
           <a className={styles.logout} href="/ivila-logout"><LogOut size={17}/> خروج</a>
         </div>
       </aside>
 
       <section className={styles.content}>
         <header className={styles.header}>
-          <div><span className={styles.eyebrow}>{isAdmin ? 'مدیریت مرکزی ivila' : 'پنل مشاور ivila'}</span><h1>{isAdmin ? 'داشبورد مدیریت' : 'فایل‌های من و فایل‌های فعال'}</h1><p>{isAdmin ? 'پیش‌نویس‌های مشاورها را بررسی، ویرایش و منتشر کن.' : 'فایل جدید را سر ملک ثبت کن؛ انتشار نهایی با ادمین اصلی است.'}</p></div>
+          <div><span className={styles.eyebrow}>{isAdmin ? 'مدیریت مرکزی املاک' : 'پنل مشاور املاک'}</span><h1>{isAdmin ? 'داشبورد مدیریت' : 'فایل‌های من و فایل‌های فعال'}</h1><p>{isAdmin ? 'پیش‌نویس‌های مشاورها را بررسی، ویرایش و منتشر کن.' : 'فایل جدید را سر ملک ثبت کن؛ انتشار نهایی با ادمین اصلی است.'}</p></div>
           <a className={styles.primaryButton} href="/admin/new"><FilePlus2 size={19}/> ثبت فایل جدید</a>
         </header>
         {error && <div className={styles.errorBox}>{error}</div>}
@@ -272,7 +272,7 @@ export default function IvilaAdminDashboard() {
                   <span><CircleDollarSign size={15}/>{propertyPrice(property)}</span>
                 </div>
                 <div className={styles.ownerPrivateBox}>
-                  <div className={styles.ownerPrivateHead}><strong>اطلاعات داخلی مالک</strong><span>فقط تیم ivila</span></div>
+                  <div className={styles.ownerPrivateHead}><strong>اطلاعات داخلی مالک</strong><span>فقط تیم داخلی</span></div>
                   <div className={styles.ownerPrivateGrid}>
                     <div className={styles.ownerPrivateItem}><small>نام مالک</small><strong><UserRound size={15}/>{property.ownerName || 'ثبت نشده'}</strong></div>
                     <div className={styles.ownerPrivateItem}><small>شماره مالک</small>{property.ownerPhone ? <a href={`tel:${property.ownerPhone}`} dir="ltr"><Phone size={15}/>{property.ownerPhone}</a> : <strong>ثبت نشده</strong>}</div>

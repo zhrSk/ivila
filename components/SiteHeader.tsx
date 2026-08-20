@@ -25,10 +25,10 @@ export default function SiteHeader() {
   return (
     <header className="site-header">
       <div className="container header-inner">
-        <a className="brand" href="/" aria-label="ivila">
-          <span className="brand-mark">i</span>
+        <a className="brand" href="/" aria-label="املاک شمال">
+          <span className="brand-mark">م</span>
           <span>
-            <strong dir="ltr">ivila</strong>
+            <strong>املاک شمال</strong>
             <small>املاک شمال، دقیق‌تر از روی نقشه</small>
           </span>
         </a>

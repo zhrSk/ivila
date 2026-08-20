@@ -119,7 +119,7 @@ export default function IvilaAgentManager() {
             const working = actionId === String(user.id)
             return <article key={user.id} className={`${styles.teamItem} ${!active ? styles.teamItemDisabled : ''}`}>
               <div className={styles.avatar}><UserRound size={17}/></div>
-              <div className={styles.teamIdentity}><strong>{user.name || user.phone || 'مشاور ivila'}</strong><span dir="ltr">{user.phone || user.username || 'شماره ثبت نشده'}</span><small>{active ? 'حساب فعال' : 'حساب بسته شده'}</small></div>
+              <div className={styles.teamIdentity}><strong>{user.name || user.phone || 'مشاور املاک'}</strong><span dir="ltr">{user.phone || user.username || 'شماره ثبت نشده'}</span><small>{active ? 'حساب فعال' : 'حساب بسته شده'}</small></div>
               <div className={styles.teamActions}>
                 <button type="button" disabled={working} className={active ? styles.pauseAgent : styles.resumeAgent} onClick={()=>void setActive(user, !active)}>{active ? <><PauseCircle size={15}/> بستن</> : <><PlayCircle size={15}/> فعال‌سازی</>}</button>
                 <button type="button" disabled={working} className={styles.deleteAgent} onClick={()=>void removeUser(user)}><Trash2 size={15}/> حذف</button>

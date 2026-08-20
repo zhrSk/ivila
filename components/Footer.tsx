@@ -2,8 +2,8 @@ export default function Footer() {
   return (
     <footer className="footer">
       <div className="container footer-inner">
-        <div><strong dir="ltr">ivila</strong><span>دموی فاز اول سامانه املاک نقشه‌محور</span></div>
-        <p>اطلاعات و محدوده‌های این نسخه نمایشی هستند و برای ارائه تجربه کاربری ساخته شده‌اند.</p>
+        <div><strong>املاک شمال</strong><span>سامانه جستجو و مدیریت فایل‌های ملکی</span></div>
+        <p>جستجوی فایل‌های ملکی با فیلتر منطقه، نقشه و مشخصات کامل ملک.</p>
       </div>
     </footer>
   )

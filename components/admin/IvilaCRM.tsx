@@ -307,7 +307,7 @@ export default function IvilaCRM() {
 
       <section className={styles.crmShell}>
         <header className={styles.crmHero}>
-          <div><span className={styles.eyebrow}>CRM سبک ivila</span><h1>مشتری، بازدید و پیگیری</h1><p>بعد از هر تماس یا بازدید، نتیجه و پیگیری بعدی را همین‌جا ثبت کن.</p></div>
+          <div><span className={styles.eyebrow}>CRM املاک</span><h1>مشتری، بازدید و پیگیری</h1><p>بعد از هر تماس یا بازدید، نتیجه و پیگیری بعدی را همین‌جا ثبت کن.</p></div>
           <div className={styles.crmHeroActions}>
             <button type="button" onClick={() => { resetCustomerForm(); setCustomerOpen(true) }}><UserPlus size={18}/> مشتری جدید</button>
             <button type="button" className={styles.crmPrimaryAction} onClick={() => setVisitOpen(true)}><Plus size={18}/> ثبت بازدید</button>

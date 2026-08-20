@@ -157,7 +157,7 @@ function toFrontendProperty(doc: PropertyDocument): Property {
   return {
     id: String(doc.slug || doc.code || doc.id),
     code: doc.code || `IV-${doc.id}`,
-    title: doc.title || 'فایل ملک ivila',
+    title: doc.title || 'فایل ملک',
     location: doc.locationText || 'رویان و اطراف',
     lifestyle: doc.lifestyle || 'urban',
     type: doc.type ? typeMap[doc.type] : 'ویلا',
@@ -173,7 +173,7 @@ function toFrontendProperty(doc: PropertyDocument): Property {
     lat: coordinates[1],
     image: cardCover || gallery[0] || fallback,
     images: gallery.length ? gallery : [fallback],
-    badges: doc.badges?.length ? doc.badges : ['فایل ivila'],
+    badges: doc.badges?.length ? doc.badges : ['فایل ملکی'],
     featured: Boolean(doc.featured),
     description: doc.description || 'توضیحات این فایل به‌زودی تکمیل می‌شود.',
     amenities: doc.amenities || [],
