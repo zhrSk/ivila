@@ -201,7 +201,7 @@ export default function IvilaPropertyForm() {
 
     fetch('/api/ivila-media-health', { cache: 'no-store', credentials: 'include' })
       .then(async (response) => {
-        const result = await response.json().catch(() => null) as null | { ready?: boolean }
+        const result = await response.json().catch(() => null) as null | { ready?: boolean; code?: string; detail?: string }
         if (!disposed) {
           const ready = response.ok && result?.ready
           setBlobStatus(ready ? 'ready' : 'missing')
