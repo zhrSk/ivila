@@ -1,26 +1,31 @@
-Patch: Main admin role recovery + published price validation (v2)
+Register/Edit + Draft Workflow Hardening
+========================================
 
-Replace/add only the files in this ZIP, preserving their paths.
+Changed files only:
+1) components/admin/IvilaPropertyForm.tsx
+2) collections/Properties.ts
 
-Fixes:
-- The original/legacy main admin is no longer treated as a consultant when its newer role metadata is missing or was migrated incorrectly.
-- The same effective-role rule is used by the property form, dashboard, CRM, profile, consultant manager, Users collection and Properties collection.
-- The production schema repair marks the oldest e-mail-based Payload account as admin; current consultant accounts remain phone/username based agents.
-- Saving the legacy admin profile also self-heals its stored role to admin.
-- Published sale properties require a positive sale price in both UI validation and Payload server validation.
-- Published rent properties require positive deposit and monthly-rent values in both UI validation and Payload server validation.
-- Consultant drafts can still omit price; only the main admin can publish.
+What is fixed:
+- Custom amenity text is normalized, deduplicated, capped at 30, and is also saved if the user typed it but forgot to press Add.
+- Editing can now truly clear optional old values instead of silently keeping stale data after PATCH.
+- Switching Sale -> Rent clears the old sale price.
+- Switching Rent -> Sale clears old deposit/monthly-rent values.
+- Agent submissions are always forced to Draft + Pending on the server.
+- Admin review decisions (Changes requested / Rejected) now win over contradictory client status values.
+- Admin Approved review forces Published on the server.
+- Amenities are normalized again server-side.
 
-Important deployment note:
-- Keep IVILA_BOOTSTRAP_SCHEMA disabled.
-- Use the existing safe ensure-ivila-production-schema flow during deployment so the users.role repair is applied.
-- If your deployment does NOT execute that safe schema script, run scripts/repair-main-admin-role.sql once against the same production database.
-- No new npm package is required.
+Suggested checks:
+A) Create draft as agent, add a custom amenity, save, reopen: amenity must remain.
+B) Edit a property, clear an optional field, save, reopen: it must stay empty.
+C) Change Sale to Rent: old sale price must disappear after save/reopen.
+D) Agent save/resave: status must remain Draft and review status Pending.
+E) Admin choose Changes requested: property must remain Draft.
+F) Admin choose Approved: property must become Published.
 
-Expected test after deployment:
-1) Login with the original main admin.
-2) Open /admin/new.
-3) Before choosing deal type, the consultant-only 'price is optional' notice must NOT appear.
-4) Choose Sale + Published: sale price is mandatory and zero is rejected.
-5) Choose Rent + Published: both deposit and monthly rent are mandatory and zero is rejected.
-6) Login as a consultant: draft price remains optional and the file cannot be published directly.
+No CSS/database migration/package change in this patch.
+
+v4.1 build fix:
+- Fixed TypeScript TS2367 in IvilaPropertyForm.tsx numberOrNull helper.
+- numeric() returns number | undefined, so empty values are now converted with `parsed ?? null`.
+- No runtime workflow behavior changed by this fix.

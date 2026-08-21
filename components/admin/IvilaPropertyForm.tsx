@@ -894,9 +894,9 @@ export default function IvilaPropertyForm({ propertyId }: { propertyId?: string 
         setCustomAmenity('')
       }
 
-      const numberOrNull = (value: string) => {
+      const numberOrNull = (value: string): number | null => {
         const parsed = numeric(value)
-        return parsed === '' ? null : parsed
+        return parsed ?? null
       }
 
       const body = {
