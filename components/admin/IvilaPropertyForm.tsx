@@ -667,11 +667,27 @@ export default function IvilaPropertyForm({ propertyId }: { propertyId?: string 
     setAmenities((current) => current.includes(value) ? current.filter((item) => item !== value) : [...current, value])
   }
 
+  function normalizeAmenities(values: string[]) {
+    const result: string[] = []
+    for (const raw of values) {
+      const value = raw.trim().replace(/\s+/g, ' ')
+      if (!value || result.includes(value)) continue
+      result.push(value)
+      if (result.length >= 30) break
+    }
+    return result
+  }
+
   function addCustomAmenity() {
-    const value = customAmenity.trim()
+    const value = customAmenity.trim().replace(/\s+/g, ' ')
     if (!value) return
-    setAmenities((current) => current.includes(value) ? current : [...current, value])
+    if (amenities.length >= 30 && !amenities.includes(value)) {
+      setError('حداکثر ۳۰ امکان برای هر فایل قابل ثبت است.')
+      return
+    }
+    setAmenities((current) => normalizeAmenities([...current, value]))
     setCustomAmenity('')
+    setError('')
   }
 
   async function addFiles(fileList: FileList | File[]) {
@@ -871,32 +887,46 @@ export default function IvilaPropertyForm({ propertyId }: { propertyId?: string 
         if (!existed) createdBlobUrls.push(url)
       }
 
+      const pendingAmenity = customAmenity.trim().replace(/\s+/g, ' ')
+      const normalizedAmenities = normalizeAmenities(pendingAmenity ? [...amenities, pendingAmenity] : amenities)
+      if (pendingAmenity) {
+        setAmenities(normalizedAmenities)
+        setCustomAmenity('')
+      }
+
+      const numberOrNull = (value: string) => {
+        const parsed = numeric(value)
+        return parsed === '' ? null : parsed
+      }
+
       const body = {
-        code: code.trim() || undefined,
-        title: title.trim() || undefined,
-        deal: deal || undefined,
-        type: type || undefined,
-        lifestyle: lifestyle || undefined,
-        areaM2: numeric(area),
-        rooms: numeric(rooms),
-        documentStatus: documentStatus || undefined,
+        // Use explicit nulls for optional fields so PATCH can really clear an old value.
+        code: code.trim() || null,
+        title: title.trim() || null,
+        deal: deal || null,
+        type: type || null,
+        lifestyle: lifestyle || null,
+        areaM2: numberOrNull(area),
+        rooms: numberOrNull(rooms),
+        documentStatus: documentStatus || null,
         ownerName: ownerName.trim(),
         ownerPhone: ownerPhone.trim(),
-        ownerNotes: ownerNotes.trim(),
-        amenities,
-        description: description.trim() || undefined,
-        locationText: locationText.trim() || undefined,
+        ownerNotes: ownerNotes.trim() || null,
+        amenities: normalizedAmenities,
+        description: description.trim() || null,
+        locationText: locationText.trim() || null,
         coordinates: [longitude, latitude],
         locationSource,
         locationAccuracyM,
         locationCapturedAt: locationCapturedAt || new Date().toISOString(),
-        salePriceToman: deal === 'sale' ? numeric(salePrice) : undefined,
-        depositToman: deal === 'rent' ? numeric(deposit) : undefined,
-        monthlyRentToman: deal === 'rent' ? numeric(monthlyRent) : undefined,
+        // Changing deal type must clear stale values from the previous deal.
+        salePriceToman: deal === 'sale' ? numberOrNull(salePrice) : null,
+        depositToman: deal === 'rent' ? numberOrNull(deposit) : null,
+        monthlyRentToman: deal === 'rent' ? numberOrNull(monthlyRent) : null,
         imageUrlsJson: JSON.stringify(imageUrls),
         status: userRole === 'agent' ? 'draft' : ((reviewStatus === 'changes_requested' || reviewStatus === 'rejected') ? 'draft' : status),
-        reviewStatus: userRole === 'admin' ? (status === 'published' ? 'approved' : reviewStatus) : undefined,
-        reviewNote: userRole === 'admin' ? reviewNote.trim() : undefined,
+        reviewStatus: userRole === 'admin' ? ((reviewStatus === 'changes_requested' || reviewStatus === 'rejected') ? reviewStatus : (status === 'published' ? 'approved' : reviewStatus)) : undefined,
+        reviewNote: userRole === 'admin' ? (reviewNote.trim() || null) : undefined,
         featured: false,
       }
 

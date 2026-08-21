@@ -104,28 +104,58 @@ export const Properties: CollectionConfig = {
           else data.createdByUserId = originalDoc.createdByUserId
         }
         if (role === 'agent') {
-          // Consultant submissions always return to the review queue.
+          // Consultant submissions always return to the review queue, regardless of client payload.
           data.status = 'draft'
           data.featured = false
           data.reviewStatus = 'pending'
+          // Keep the last admin note visible as context after resubmission.
           data.reviewNote = originalDoc?.reviewNote || ''
           data.reviewedByUserId = originalDoc?.reviewedByUserId || ''
           data.reviewedAt = originalDoc?.reviewedAt || null
         } else if (role === 'admin') {
           const requestedReviewStatus = String(data?.reviewStatus || originalDoc?.reviewStatus || '')
-          if (data?.status === 'published') {
-            data.reviewStatus = 'approved'
-            data.reviewedByUserId = currentUserId
-            data.reviewedAt = new Date().toISOString()
-          } else if (requestedReviewStatus === 'changes_requested' || requestedReviewStatus === 'rejected') {
+          // Explicit review decisions win over a contradictory client-side status value.
+          if (requestedReviewStatus === 'changes_requested' || requestedReviewStatus === 'rejected') {
             data.status = 'draft'
             data.featured = false
             data.reviewStatus = requestedReviewStatus
             data.reviewedByUserId = currentUserId
             data.reviewedAt = new Date().toISOString()
+          } else if (data?.status === 'published' || requestedReviewStatus === 'approved') {
+            data.status = 'published'
+            data.reviewStatus = 'approved'
+            data.reviewedByUserId = currentUserId
+            data.reviewedAt = new Date().toISOString()
           } else if (!data?.reviewStatus && originalDoc?.reviewStatus) {
             data.reviewStatus = originalDoc.reviewStatus
           }
+        }
+
+        // Normalize custom amenities server-side too; never trust only the form state.
+        if (Object.prototype.hasOwnProperty.call(data, 'amenities')) {
+          const source = Array.isArray(data.amenities) ? data.amenities : []
+          const normalized: string[] = []
+          for (const raw of source) {
+            const value = typeof raw === 'string' ? raw.trim().replace(/\s+/g, ' ') : ''
+            if (!value || normalized.includes(value)) continue
+            normalized.push(value)
+            if (normalized.length >= 30) break
+          }
+          data.amenities = normalized
+        }
+
+        // Deal changes must not leave hidden stale prices in the database.
+        const dealWasSent = Object.prototype.hasOwnProperty.call(data, 'deal')
+        const effectiveDeal = dealWasSent ? data.deal : originalDoc?.deal
+        if (effectiveDeal === 'sale') {
+          data.depositToman = null
+          data.monthlyRentToman = null
+        } else if (effectiveDeal === 'rent') {
+          data.salePriceToman = null
+        } else if (dealWasSent) {
+          data.salePriceToman = null
+          data.depositToman = null
+          data.monthlyRentToman = null
         }
 
         const coordinates = data?.coordinates ?? originalDoc?.coordinates
