@@ -91,15 +91,6 @@ function formatMoneyDigits(value: string) {
   return digits.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
 }
 
-function parseQuickMoney(value: string) {
-  const normalized = toEnglishDigits(value)
-    .replace(/[٬,]/g, '')
-    .replace(/[٫]/g, '.')
-    .replace(/[^0-9.]/g, '')
-  const number = Number(normalized)
-  return Number.isFinite(number) && number >= 0 ? number : undefined
-}
-
 function humanMoney(value: string) {
   const amount = numeric(value)
   if (amount === undefined) return ''
@@ -122,42 +113,53 @@ type SmartMoneyInputProps = {
 }
 
 function SmartMoneyInput({ label, value, onChange, required = false, wide = false, placeholder }: SmartMoneyInputProps) {
-  const [quick, setQuick] = useState('')
+  const amount = numeric(value)
+  const showUnitSuggestions = amount !== undefined && amount > 0 && amount < 100_000
+  const compactLabel = amount === undefined ? '' : amount.toLocaleString('fa-IR')
 
-  function applyQuick(multiplier: number) {
-    const number = parseQuickMoney(quick)
-    if (number === undefined) return
-    onChange(String(Math.round(number * multiplier)))
-    setQuick('')
+  function applyUnit(multiplier: number) {
+    if (amount === undefined || amount <= 0) return
+    const converted = Math.round(amount * multiplier)
+    if (!Number.isSafeInteger(converted) || converted <= 0) return
+    onChange(String(converted))
   }
 
   return (
     <div className={`${styles.smartMoneyField} ${wide ? styles.span2 : ''}`}>
       <label className={styles.field}>
         <span>{label} {required && <b>اجباری</b>}</span>
-        <input
-          inputMode="numeric"
-          value={formatMoneyDigits(value)}
-          onChange={(event) => onChange(moneyDigits(event.target.value))}
-          placeholder={placeholder || 'مثلاً 18,500,000,000'}
-          dir="ltr"
-        />
-      </label>
-      <div className={styles.moneyAssist}>
-        <strong>{humanMoney(value) || 'مبلغ دقیق به تومان'}</strong>
-        <div className={styles.moneyQuickRow}>
+        <div className={styles.moneyInputWrap}>
           <input
-            inputMode="decimal"
-            value={quick}
-            onChange={(event) => setQuick(toEnglishDigits(event.target.value).replace(/[^0-9.٫]/g, ''))}
-            placeholder="مثلاً 18.5"
+            inputMode="numeric"
+            value={formatMoneyDigits(value)}
+            onChange={(event) => onChange(moneyDigits(event.target.value))}
+            placeholder={placeholder || 'مثلاً 18,500,000,000'}
             dir="ltr"
-            aria-label={`ورود سریع ${label}`}
           />
-          <button type="button" onClick={() => applyQuick(1_000_000)}>میلیون</button>
-          <button type="button" onClick={() => applyQuick(1_000_000_000)}>میلیارد</button>
+          <span>تومان</span>
         </div>
-      </div>
+      </label>
+
+      {showUnitSuggestions ? (
+        <div className={styles.moneySuggestions} aria-label={`پیشنهاد تبدیل ${label}`}>
+          <p>منظورت از <strong>{compactLabel}</strong> کدام است؟</p>
+          <div>
+            <button type="button" onClick={() => applyUnit(1_000_000)}>
+              <strong>{compactLabel} میلیون</strong>
+              <small>{formatMoneyDigits(String(Math.round(amount * 1_000_000)))} تومان</small>
+            </button>
+            <button type="button" onClick={() => applyUnit(1_000_000_000)}>
+              <strong>{compactLabel} میلیارد</strong>
+              <small>{formatMoneyDigits(String(Math.round(amount * 1_000_000_000)))} تومان</small>
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className={styles.moneyReadout}>
+          <span>خوانش مبلغ</span>
+          <strong>{humanMoney(value) || 'هنوز مبلغی وارد نشده'}</strong>
+        </div>
+      )}
     </div>
   )
 }
@@ -1003,6 +1005,7 @@ export default function IvilaPropertyForm({ propertyId }: { propertyId?: string 
                     value={deposit}
                     onChange={setDeposit}
                     required={userRole === 'admin' && status === 'published'}
+                    wide
                     placeholder="مثلاً 1,500,000,000"
                   />
                   <SmartMoneyInput
@@ -1010,6 +1013,7 @@ export default function IvilaPropertyForm({ propertyId }: { propertyId?: string 
                     value={monthlyRent}
                     onChange={setMonthlyRent}
                     required={userRole === 'admin' && status === 'published'}
+                    wide
                     placeholder="مثلاً 35,000,000"
                   />
                 </>
