@@ -1,18 +1,26 @@
-ivila public bugfix v1
+Patch: Main admin role recovery + published price validation (v2)
 
-Changed files:
-- components/SiteHeader.tsx
-- components/PropertyLocationMap.tsx
-- components/PropertyGallery.tsx
-- lib/property-repository.ts
-- app/globals.css
-- components/admin/IvilaPropertyForm.tsx
+Replace/add only the files in this ZIP, preserving their paths.
 
 Fixes:
-1) Public location is now a secret-derived approximate point about 0.9–1.4 km from the real property, and the detail map shows an approximate area circle instead of an exact-looking pin.
-2) Header links are absolute home links, Search/Login buttons work, and the mobile menu actually opens.
-3) Legacy Payload gallery uses original media URLs instead of the 1600px detail derivative. Main gallery image is loaded eagerly and without visual filtering.
-4) Future phone uploads keep up to 3200px and start at WebP quality 0.90, while retaining the existing ~3.8 MB request safety limit.
+- The original/legacy main admin is no longer treated as a consultant when its newer role metadata is missing or was migrated incorrectly.
+- The same effective-role rule is used by the property form, dashboard, CRM, profile, consultant manager, Users collection and Properties collection.
+- The production schema repair marks the oldest e-mail-based Payload account as admin; current consultant accounts remain phone/username based agents.
+- Saving the legacy admin profile also self-heals its stored role to admin.
+- Published sale properties require a positive sale price in both UI validation and Payload server validation.
+- Published rent properties require positive deposit and monthly-rent values in both UI validation and Payload server validation.
+- Consultant drafts can still omit price; only the main admin can publish.
 
-No DB migration and no new package are required.
-Existing Blob photos that were already compressed to 2400px are not re-encoded automatically; re-upload only if a particular old photo remains visibly soft.
+Important deployment note:
+- Keep IVILA_BOOTSTRAP_SCHEMA disabled.
+- Use the existing safe ensure-ivila-production-schema flow during deployment so the users.role repair is applied.
+- If your deployment does NOT execute that safe schema script, run scripts/repair-main-admin-role.sql once against the same production database.
+- No new npm package is required.
+
+Expected test after deployment:
+1) Login with the original main admin.
+2) Open /admin/new.
+3) Before choosing deal type, the consultant-only 'price is optional' notice must NOT appear.
+4) Choose Sale + Published: sale price is mandatory and zero is rejected.
+5) Choose Rent + Published: both deposit and monthly rent are mandatory and zero is rejected.
+6) Login as a consultant: draft price remains optional and the file cannot be published directly.

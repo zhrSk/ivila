@@ -60,10 +60,18 @@ try {
     UPDATE users SET is_active = TRUE WHERE is_active IS NULL;
     ALTER TABLE users ALTER COLUMN is_active SET DEFAULT TRUE;
 
+    -- Repair the original Payload e-mail admin deterministically. Consultant
+    -- accounts created by the ivila panel are phone/username based and have no
+    -- e-mail, while the original bootstrap admin is the oldest e-mail account.
     UPDATE users
       SET role = 'admin'
-      WHERE role IS NULL
-        AND id = (SELECT id FROM users WHERE role IS NULL ORDER BY id ASC LIMIT 1);
+      WHERE id = (
+        SELECT id
+        FROM users
+        WHERE email IS NOT NULL AND btrim(email) <> ''
+        ORDER BY id ASC
+        LIMIT 1
+      );
     UPDATE users SET role = 'agent' WHERE role IS NULL;
     ALTER TABLE users ALTER COLUMN role SET DEFAULT 'agent';
 

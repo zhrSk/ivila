@@ -3,6 +3,7 @@
 import { ArrowRight, KeyRound, Save, UserRound } from 'lucide-react'
 import { FormEvent, useEffect, useState } from 'react'
 import { isValidIranMobile, normalizeIranPhone } from '@/lib/phone'
+import { effectiveUserRole } from '@/lib/ivila-user-role'
 import styles from './IvilaAdmin.module.css'
 
 export default function IvilaProfile() {
@@ -19,7 +20,7 @@ export default function IvilaProfile() {
   const [passwordBusy, setPasswordBusy] = useState(false)
   const [passwordMessage, setPasswordMessage] = useState('')
 
-  useEffect(() => { fetch('/api/users/me', { credentials:'include', cache:'no-store' }).then(async r => { if (r.status===401) { window.location.assign('/login'); return } const d=await r.json() as any; const u=d?.user; if (!u) return; setId(u.id); setName(u.name||''); setPhone(u.phone||u.username||''); setBio(u.bio||''); setRole(u.role||'agent') }) }, [])
+  useEffect(() => { fetch('/api/users/me', { credentials:'include', cache:'no-store' }).then(async r => { if (r.status===401) { window.location.assign('/login'); return } const d=await r.json() as any; const u=d?.user; if (!u) return; setId(u.id); setName(u.name||''); setPhone(u.phone||u.username||''); setBio(u.bio||''); setRole(effectiveUserRole(u)) }) }, [])
 
   async function submit(e:FormEvent){
     e.preventDefault(); setSaved(false); setError('')

@@ -1,13 +1,11 @@
 import { computeEnvironmentalDistances } from '@/lib/spatial-distance'
+import { effectiveUserRole } from '@/lib/ivila-user-role'
 import type { CollectionConfig, Where } from 'payload'
 
 function slugifyCode(code?: string) {
   return code?.trim().toLowerCase().replace(/\s+/g, '-')
 }
 
-function roleOf(user: unknown) {
-  return (user as { role?: string } | null | undefined)?.role
-}
 
 function isActiveUser(user: unknown) {
   return (user as { isActive?: boolean } | null | undefined)?.isActive !== false
@@ -24,6 +22,11 @@ function isPublished(data: unknown) {
 
 function hasText(value: unknown) {
   return typeof value === 'string' && value.trim().length > 0
+}
+
+function hasPositiveMoney(value: unknown) {
+  const number = Number(value)
+  return Number.isFinite(number) && number > 0
 }
 
 function blobImageCount(value: unknown) {
@@ -76,25 +79,25 @@ export const Properties: CollectionConfig = {
     read: ({ req }) => {
       if (!req.user) return publishedOnlyWhere()
       if (!isActiveUser(req.user)) return false
-      if (roleOf(req.user) === 'admin') return true
+      if (effectiveUserRole(req.user) === 'admin') return true
       return agentReadableWhere(userId(req.user))
     },
     create: ({ req }) => Boolean(req.user && isActiveUser(req.user)),
     update: ({ req }) => {
       if (!req.user || !isActiveUser(req.user)) return false
-      if (roleOf(req.user) === 'admin') return true
+      if (effectiveUserRole(req.user) === 'admin') return true
       return agentOwnDraftWhere(userId(req.user))
     },
     delete: ({ req }) => {
       if (!req.user || !isActiveUser(req.user)) return false
-      if (roleOf(req.user) === 'admin') return true
+      if (effectiveUserRole(req.user) === 'admin') return true
       return agentOwnDraftWhere(userId(req.user))
     },
   },
   hooks: {
     beforeChange: [
       async ({ data, originalDoc, req }) => {
-        const role = roleOf(req.user)
+        const role = effectiveUserRole(req.user)
         const currentUserId = userId(req.user)
         if (currentUserId) {
           if (!originalDoc?.createdByUserId) data.createdByUserId = currentUserId
@@ -172,7 +175,7 @@ export const Properties: CollectionConfig = {
                   label: 'کد فایل',
                   unique: true,
                   validate: (value: unknown, { data, req }: any) =>
-                    roleOf(req.user) === 'admin' && isPublished(data) && !hasText(value)
+                    effectiveUserRole(req.user) === 'admin' && isPublished(data) && !hasText(value)
                       ? 'برای انتشار فایل، کد فایل اجباری است.'
                       : true,
                   index: true,
@@ -183,7 +186,7 @@ export const Properties: CollectionConfig = {
                   type: 'text',
                   label: 'عنوان فایل',
                   validate: (value: unknown, { data, req }: any) =>
-                    roleOf(req.user) === 'admin' && isPublished(data) && !hasText(value)
+                    effectiveUserRole(req.user) === 'admin' && isPublished(data) && !hasText(value)
                       ? 'برای انتشار فایل، عنوان اجباری است.'
                       : true,
                   index: true,
@@ -206,7 +209,7 @@ export const Properties: CollectionConfig = {
                   type: 'select',
                   label: 'نوع معامله',
                   validate: (value: unknown, { data, req }: any) =>
-                    roleOf(req.user) === 'admin' && isPublished(data) && !hasText(value)
+                    effectiveUserRole(req.user) === 'admin' && isPublished(data) && !hasText(value)
                       ? 'برای انتشار فایل، نوع معامله اجباری است.'
                       : true,
                   index: true,
@@ -221,7 +224,7 @@ export const Properties: CollectionConfig = {
                   type: 'select',
                   label: 'نوع ملک',
                   validate: (value: unknown, { data, req }: any) =>
-                    roleOf(req.user) === 'admin' && isPublished(data) && !hasText(value)
+                    effectiveUserRole(req.user) === 'admin' && isPublished(data) && !hasText(value)
                       ? 'برای انتشار فایل، نوع ملک اجباری است.'
                       : true,
                   index: true,
@@ -237,7 +240,7 @@ export const Properties: CollectionConfig = {
                   type: 'select',
                   label: 'سبک منطقه',
                   validate: (value: unknown, { data, req }: any) =>
-                    roleOf(req.user) === 'admin' && isPublished(data) && !hasText(value)
+                    effectiveUserRole(req.user) === 'admin' && isPublished(data) && !hasText(value)
                       ? 'برای انتشار فایل، سبک منطقه اجباری است.'
                       : true,
                   index: true,
@@ -268,7 +271,7 @@ export const Properties: CollectionConfig = {
                   type: 'number',
                   label: 'تعداد خواب',
                   validate: (value: unknown, { data, req }: any) =>
-                    roleOf(req.user) === 'admin' && isPublished(data) && (value === null || value === undefined)
+                    effectiveUserRole(req.user) === 'admin' && isPublished(data) && (value === null || value === undefined)
                       ? 'برای انتشار فایل، تعداد خواب را مشخص کن.'
                       : true,
                   min: 0,
@@ -282,7 +285,7 @@ export const Properties: CollectionConfig = {
               type: 'select',
               label: 'وضعیت سند',
               validate: (value: unknown, { data, req }: any) =>
-                roleOf(req.user) === 'admin' && isPublished(data) && !hasText(value)
+                effectiveUserRole(req.user) === 'admin' && isPublished(data) && !hasText(value)
                   ? 'برای انتشار فایل، وضعیت سند را مشخص کن.'
                   : true,
               index: true,
@@ -298,7 +301,7 @@ export const Properties: CollectionConfig = {
               type: 'textarea',
               label: 'توضیحات فایل',
               validate: (value: unknown, { data, req }: any) =>
-                roleOf(req.user) === 'admin' && isPublished(data) && !hasText(value)
+                effectiveUserRole(req.user) === 'admin' && isPublished(data) && !hasText(value)
                   ? 'برای انتشار فایل، توضیحات اجباری است.'
                   : true,
             },
@@ -323,6 +326,10 @@ export const Properties: CollectionConfig = {
                   min: 0,
                   index: true,
                   admin: { width: '33%' },
+                  validate: (value: unknown, { data, req }: any) =>
+                    effectiveUserRole(req.user) === 'admin' && isPublished(data) && data?.deal === 'sale' && !hasPositiveMoney(value)
+                      ? 'برای انتشار فایل فروش، قیمت فروش اجباری است.'
+                      : true,
                 },
                 {
                   name: 'depositToman',
@@ -330,6 +337,10 @@ export const Properties: CollectionConfig = {
                   label: 'ودیعه (تومان)',
                   min: 0,
                   admin: { width: '33%' },
+                  validate: (value: unknown, { data, req }: any) =>
+                    effectiveUserRole(req.user) === 'admin' && isPublished(data) && data?.deal === 'rent' && !hasPositiveMoney(value)
+                      ? 'برای انتشار فایل اجاره، مبلغ ودیعه اجباری است.'
+                      : true,
                 },
                 {
                   name: 'monthlyRentToman',
@@ -338,6 +349,10 @@ export const Properties: CollectionConfig = {
                   min: 0,
                   index: true,
                   admin: { width: '34%' },
+                  validate: (value: unknown, { data, req }: any) =>
+                    effectiveUserRole(req.user) === 'admin' && isPublished(data) && data?.deal === 'rent' && !hasPositiveMoney(value)
+                      ? 'برای انتشار فایل اجاره، اجاره ماهانه اجباری است.'
+                      : true,
                 },
               ],
             },
@@ -354,7 +369,7 @@ export const Properties: CollectionConfig = {
                   type: 'text',
                   label: 'نام مالک',
                   validate: (value: unknown, { data, req }: any) =>
-                    (roleOf(req.user) === 'agent' || (roleOf(req.user) === 'admin' && isPublished(data))) && !hasText(value)
+                    (effectiveUserRole(req.user) === 'agent' || (effectiveUserRole(req.user) === 'admin' && isPublished(data))) && !hasText(value)
                       ? 'نام مالک برای ثبت مشاور و انتشار فایل اجباری است.'
                       : true,
                   admin: { width: '50%' },
@@ -365,7 +380,7 @@ export const Properties: CollectionConfig = {
                   type: 'text',
                   label: 'شماره مالک',
                   validate: (value: unknown, { data, req }: any) =>
-                    (roleOf(req.user) === 'agent' || (roleOf(req.user) === 'admin' && isPublished(data))) && !hasText(value)
+                    (effectiveUserRole(req.user) === 'agent' || (effectiveUserRole(req.user) === 'admin' && isPublished(data))) && !hasText(value)
                       ? 'شماره مالک برای ثبت مشاور و انتشار فایل اجباری است.'
                       : true,
                   admin: { width: '50%' },
@@ -384,7 +399,7 @@ export const Properties: CollectionConfig = {
               type: 'text',
               label: 'آدرس/محدوده قابل نمایش',
               validate: (value: unknown, { data, req }: any) =>
-                roleOf(req.user) === 'admin' && isPublished(data) && !hasText(value)
+                effectiveUserRole(req.user) === 'admin' && isPublished(data) && !hasText(value)
                   ? 'برای انتشار فایل، محدوده قابل نمایش را وارد کن.'
                   : true,
               index: true,
@@ -449,7 +464,7 @@ export const Properties: CollectionConfig = {
               type: 'text',
               label: 'تصاویر Blob (OIDC)',
               validate: (value: unknown, { data, req }: any) => {
-                const mustHaveImage = roleOf(req.user) === 'agent' || (roleOf(req.user) === 'admin' && isPublished(data))
+                const mustHaveImage = effectiveUserRole(req.user) === 'agent' || (effectiveUserRole(req.user) === 'admin' && isPublished(data))
                 return mustHaveImage && blobImageCount(value) < 1
                   ? 'برای ثبت مشاور یا انتشار فایل، حداقل یک عکس اجباری است.'
                   : true
@@ -525,7 +540,7 @@ export const Properties: CollectionConfig = {
               type: 'textarea',
               label: 'یادداشت بررسی برای مشاور',
               validate: (value: unknown, { data, req }: any) =>
-                roleOf(req.user) === 'admin' && ['changes_requested', 'rejected'].includes(String(data?.reviewStatus || '')) && !hasText(value)
+                effectiveUserRole(req.user) === 'admin' && ['changes_requested', 'rejected'].includes(String(data?.reviewStatus || '')) && !hasText(value)
                   ? 'برای نیاز به اصلاح یا رد فایل، توضیح ادمین را وارد کن.'
                   : true,
               access: { read: ({ req }) => Boolean(req.user) },

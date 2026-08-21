@@ -15,10 +15,11 @@ import {
   X,
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
+import { effectiveUserRole } from '@/lib/ivila-user-role'
 import styles from './IvilaAdmin.module.css'
 
 type UserRole = 'admin' | 'agent'
-type CurrentUser = { id?: string; role?: UserRole; name?: string; phone?: string }
+type CurrentUser = { id?: string; role?: UserRole; name?: string; phone?: string; email?: string; username?: string }
 type Agent = { id: string; name?: string; phone?: string }
 type Customer = {
   id: string
@@ -146,7 +147,7 @@ export default function IvilaCRM() {
   const [visitFollowup, setVisitFollowup] = useState('')
   const [visitNote, setVisitNote] = useState('')
 
-  const isAdmin = currentUser?.role === 'admin'
+  const isAdmin = effectiveUserRole(currentUser) === 'admin'
 
   async function loadCRM(agentId = agentFilter) {
     setError('')

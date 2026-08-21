@@ -1,9 +1,6 @@
 import type { CollectionConfig } from 'payload'
 import { normalizeIranPhone } from '@/lib/phone'
-
-function roleOf(user: unknown) {
-  return (user as { role?: string } | null | undefined)?.role
-}
+import { effectiveUserRole } from '@/lib/ivila-user-role'
 
 function isActiveUser(user: unknown) {
   return (user as { isActive?: boolean } | null | undefined)?.isActive !== false
@@ -27,18 +24,18 @@ export const Users: CollectionConfig = {
     defaultColumns: ['name', 'phone', 'role', 'updatedAt'],
   },
   access: {
-    create: ({ req }) => roleOf(req.user) === 'admin',
+    create: ({ req }) => effectiveUserRole(req.user) === 'admin',
     read: ({ req }) => {
-      if (roleOf(req.user) === 'admin') return true
+      if (effectiveUserRole(req.user) === 'admin') return true
       if (!req.user || !isActiveUser(req.user)) return false
       return { id: { equals: req.user.id } }
     },
     update: ({ req }) => {
-      if (roleOf(req.user) === 'admin') return true
+      if (effectiveUserRole(req.user) === 'admin') return true
       if (!req.user || !isActiveUser(req.user)) return false
       return { id: { equals: req.user.id } }
     },
-    delete: ({ req }) => roleOf(req.user) === 'admin',
+    delete: ({ req }) => effectiveUserRole(req.user) === 'admin',
   },
   hooks: {
     beforeLogin: [
@@ -48,13 +45,18 @@ export const Users: CollectionConfig = {
       },
     ],
     beforeChange: [
-      ({ data }) => {
-        const phone = normalizeIranPhone(data?.phone)
+      ({ data, originalDoc }) => {
+        const phone = normalizeIranPhone(data?.phone ?? originalDoc?.phone)
         if (phone) {
           data.phone = phone
-          // Payload's username is the real auth identifier; we keep it synced
-          // with the phone so the rest of the product can simply use `phone`.
+          // Payload's username is the real auth identifier; keep it pinned to
+          // the phone even on partial PATCH requests.
           data.username = phone
+        }
+        // If an old bootstrap admin was accidentally migrated as `agent`, any
+        // subsequent profile save permanently repairs the stored role too.
+        if (effectiveUserRole(originalDoc) === 'admin' && originalDoc?.role !== 'admin') {
+          data.role = 'admin'
         }
         return data
       },
@@ -88,7 +90,7 @@ export const Users: CollectionConfig = {
         { label: 'مشاور', value: 'agent' },
       ],
       access: {
-        update: ({ req }) => roleOf(req.user) === 'admin',
+        update: ({ req }) => effectiveUserRole(req.user) === 'admin',
       },
     },
     {
@@ -97,7 +99,7 @@ export const Users: CollectionConfig = {
       label: 'حساب فعال',
       defaultValue: true,
       access: {
-        update: ({ req }) => roleOf(req.user) === 'admin',
+        update: ({ req }) => effectiveUserRole(req.user) === 'admin',
       },
       admin: {
         description: 'اگر خاموش شود، مشاور دیگر اجازه ورود و استفاده از پنل را ندارد.',

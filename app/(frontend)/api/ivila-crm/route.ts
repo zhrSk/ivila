@@ -2,6 +2,7 @@ import { sql } from '@payloadcms/db-postgres'
 import config from '@payload-config'
 import { getPayload } from 'payload'
 import { normalizeIranPhone } from '@/lib/phone'
+import { effectiveUserRole } from '@/lib/ivila-user-role'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
@@ -12,6 +13,8 @@ type UserShape = {
   isActive?: boolean
   name?: string
   phone?: string
+  email?: string
+  username?: string
 }
 
 type DrizzleExecutor = { execute(query: unknown): Promise<unknown> }
@@ -52,7 +55,7 @@ function idOf(user: UserShape | null | undefined) {
 }
 
 function isAdmin(user: UserShape | null | undefined) {
-  return user?.role === 'admin'
+  return effectiveUserRole(user) === 'admin'
 }
 
 function jsonError(message: string, status = 400, code = 'BAD_REQUEST') {
@@ -157,7 +160,7 @@ export async function GET(request: Request) {
 
     return Response.json({
       ok: true,
-      currentUser: { id: userId, role: user.role, name: user.name, phone: user.phone },
+      currentUser: { id: userId, role: effectiveUserRole(user), name: user.name, phone: user.phone },
       customers: rowsOf(customersResult),
       visits: rowsOf(visitsResult),
       agents: rowsOf(agentsResult),

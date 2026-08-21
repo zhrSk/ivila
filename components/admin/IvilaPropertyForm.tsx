@@ -19,7 +19,8 @@ import {
   Waves,
   X,
 } from 'lucide-react'
-import { FormEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { DragEvent, FormEvent, useEffect, useMemo, useRef, useState } from 'react'
+import { effectiveUserRole } from '@/lib/ivila-user-role'
 import styles from './IvilaAdmin.module.css'
 
 type Deal = '' | 'sale' | 'rent'
@@ -58,32 +59,50 @@ const MAX_IMAGES = 30
 const MAX_UPLOAD_BYTES = 4_050_000
 const MAX_IMAGE_SIDE = 3840
 
-function numeric(value: string) {
-  if (!value.trim()) return undefined
-  const number = Number(value.replace(/,/g, ''))
-  return Number.isFinite(number) ? number : undefined
-}
-
-function latinDigits(value: string) {
+function toEnglishDigits(value: string) {
   const fa = '۰۱۲۳۴۵۶۷۸۹'
   const ar = '٠١٢٣٤٥٦٧٨٩'
   return value
-    .replace(/[۰-۹]/g, (digit) => String(fa.indexOf(digit)))
-    .replace(/[٠-٩]/g, (digit) => String(ar.indexOf(digit)))
+    .split('')
+    .map((char) => {
+      const faIndex = fa.indexOf(char)
+      if (faIndex >= 0) return String(faIndex)
+      const arIndex = ar.indexOf(char)
+      if (arIndex >= 0) return String(arIndex)
+      return char
+    })
+    .join('')
 }
 
 function moneyDigits(value: string) {
-  return latinDigits(value).replace(/[^0-9]/g, '').replace(/^0+(?=\d)/, '')
+  return toEnglishDigits(value).replace(/[^0-9]/g, '').replace(/^0+(?=\d)/, '')
 }
 
-function formatMoneyInput(value: string) {
+function numeric(value: string) {
   const digits = moneyDigits(value)
-  return digits ? digits.replace(/\B(?=(\d{3})+(?!\d))/g, ',') : ''
+  if (!digits) return undefined
+  const number = Number(digits)
+  return Number.isFinite(number) ? number : undefined
+}
+
+function formatMoneyDigits(value: string) {
+  const digits = moneyDigits(value)
+  if (!digits) return ''
+  return digits.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+}
+
+function parseQuickMoney(value: string) {
+  const normalized = toEnglishDigits(value)
+    .replace(/[٬,]/g, '')
+    .replace(/[٫]/g, '.')
+    .replace(/[^0-9.]/g, '')
+  const number = Number(normalized)
+  return Number.isFinite(number) && number >= 0 ? number : undefined
 }
 
 function humanMoney(value: string) {
-  const amount = Number(moneyDigits(value))
-  if (!Number.isFinite(amount) || amount <= 0) return ''
+  const amount = numeric(value)
+  if (amount === undefined) return ''
   if (amount >= 1_000_000_000) {
     return `${(amount / 1_000_000_000).toLocaleString('fa-IR', { maximumFractionDigits: 2 })} میلیارد تومان`
   }
@@ -93,47 +112,52 @@ function humanMoney(value: string) {
   return `${amount.toLocaleString('fa-IR')} تومان`
 }
 
-function quickMoneyNumber(value: string) {
-  const normalized = latinDigits(value).replace(/٫/g, '.').replace(/,/g, '.').replace(/[^0-9.]/g, '')
-  const firstDot = normalized.indexOf('.')
-  const safe = firstDot < 0 ? normalized : normalized.slice(0, firstDot + 1) + normalized.slice(firstDot + 1).replace(/\./g, '')
-  const number = Number(safe)
-  return Number.isFinite(number) && number > 0 ? number : null
+type SmartMoneyInputProps = {
+  label: string
+  value: string
+  onChange: (value: string) => void
+  required?: boolean
+  wide?: boolean
+  placeholder?: string
 }
 
-function SmartMoneyInput({ label, value, onChange, span = false }: { label: string; value: string; onChange: (value: string) => void; span?: boolean }) {
+function SmartMoneyInput({ label, value, onChange, required = false, wide = false, placeholder }: SmartMoneyInputProps) {
   const [quick, setQuick] = useState('')
 
-  function apply(multiplier: number) {
-    const amount = quickMoneyNumber(quick)
-    if (!amount) return
-    onChange(String(Math.round(amount * multiplier)))
+  function applyQuick(multiplier: number) {
+    const number = parseQuickMoney(quick)
+    if (number === undefined) return
+    onChange(String(Math.round(number * multiplier)))
+    setQuick('')
   }
 
   return (
-    <div className={`${styles.field} ${styles.smartMoneyField} ${span ? styles.span2 : ''}`}>
-      <span>{label}</span>
-      <input
-        inputMode="numeric"
-        value={formatMoneyInput(value)}
-        onChange={(event) => onChange(moneyDigits(event.target.value))}
-        placeholder="مثلاً 18,800,000,000"
-        dir="ltr"
-      />
-      {value && <small className={styles.moneyHuman}>{humanMoney(value)}</small>}
-      <div className={styles.moneyAssistant}>
+    <div className={`${styles.smartMoneyField} ${wide ? styles.span2 : ''}`}>
+      <label className={styles.field}>
+        <span>{label} {required && <b>اجباری</b>}</span>
         <input
-          inputMode="decimal"
-          value={quick}
-          onChange={(event) => setQuick(event.target.value)}
-          placeholder="عدد کوتاه؛ مثلاً 18.8"
+          inputMode="numeric"
+          value={formatMoneyDigits(value)}
+          onChange={(event) => onChange(moneyDigits(event.target.value))}
+          placeholder={placeholder || 'مثلاً 18,500,000,000'}
           dir="ltr"
-          aria-label={`${label} - مقدار کوتاه`}
         />
-        <button type="button" onClick={() => apply(1_000_000)}>میلیون</button>
-        <button type="button" onClick={() => apply(1_000_000_000)}>میلیارد</button>
+      </label>
+      <div className={styles.moneyAssist}>
+        <strong>{humanMoney(value) || 'مبلغ دقیق به تومان'}</strong>
+        <div className={styles.moneyQuickRow}>
+          <input
+            inputMode="decimal"
+            value={quick}
+            onChange={(event) => setQuick(toEnglishDigits(event.target.value).replace(/[^0-9.٫]/g, ''))}
+            placeholder="مثلاً 18.5"
+            dir="ltr"
+            aria-label={`ورود سریع ${label}`}
+          />
+          <button type="button" onClick={() => applyQuick(1_000_000)}>میلیون</button>
+          <button type="button" onClick={() => applyQuick(1_000_000_000)}>میلیارد</button>
+        </div>
       </div>
-      <small className={styles.moneyTip}>عدد کوتاه را بنویس و واحد را بزن؛ صفرها خودکار اضافه می‌شوند.</small>
     </div>
   )
 }
@@ -405,9 +429,10 @@ export default function IvilaPropertyForm({ propertyId }: { propertyId?: string 
         if (response.status === 401) { window.location.assign('/login'); return }
         const result = await response.json().catch(() => null) as any
         if (!disposed && result?.user) {
-          setUserRole(result.user.role === 'admin' ? 'admin' : 'agent')
+          const currentRole = effectiveUserRole(result.user)
+          setUserRole(currentRole)
           setCurrentUserId(result.user.id == null ? '' : String(result.user.id))
-          if (result.user.role !== 'admin') setStatus('draft')
+          if (currentRole !== 'admin') setStatus('draft')
         }
       })
       .catch(() => {})
@@ -647,8 +672,6 @@ export default function IvilaPropertyForm({ propertyId }: { propertyId?: string 
     setCustomAmenity('')
   }
 
-  const customAmenities = amenities.filter((item) => !DEFAULT_AMENITIES.includes(item))
-
   async function addFiles(fileList: FileList | File[]) {
     if (blobStatus !== 'ready') {
       setError('برای آپلود عکس، Vercel Blob باید به پروژه متصل باشد.')
@@ -710,7 +733,7 @@ export default function IvilaPropertyForm({ propertyId }: { propertyId?: string 
     moveImage(index, 0)
   }
 
-  function handleDrop(event: React.DragEvent<HTMLDivElement>) {
+  function handleDrop(event: DragEvent<HTMLDivElement>) {
     event.preventDefault()
     setDropActive(false)
     if (event.dataTransfer.files?.length) void addFiles(event.dataTransfer.files)
@@ -808,6 +831,16 @@ export default function IvilaPropertyForm({ propertyId }: { propertyId?: string 
 
     if (publishing && (!code.trim() || !title.trim() || !deal || !type || !lifestyle || !documentStatus || !locationText.trim() || !description.trim())) {
       setError('برای انتشار، اطلاعات تکمیلی فایل شامل کد، عنوان، نوع معامله، نوع ملک، سبک منطقه، سند، محدوده و توضیحات باید کامل شود.')
+      return
+    }
+
+    if (publishing && deal === 'sale' && (!numeric(salePrice) || Number(numeric(salePrice)) <= 0)) {
+      setError('برای انتشار فایل فروش، قیمت فروش را وارد کن.')
+      return
+    }
+
+    if (publishing && deal === 'rent' && ((!numeric(deposit) || Number(numeric(deposit)) <= 0) || (!numeric(monthlyRent) || Number(numeric(monthlyRent)) <= 0))) {
+      setError('برای انتشار فایل اجاره، ودیعه و اجاره ماهانه را کامل کن.')
       return
     }
 
@@ -955,14 +988,35 @@ export default function IvilaPropertyForm({ propertyId }: { propertyId?: string 
             <div className={styles.sectionTitle}><span>۲</span><div><h2>قیمت و انتشار</h2><p>قیمت و وضعیت نمایش فایل.</p></div></div>
             <div className={styles.fieldsGrid}>
               {deal === 'sale' ? (
-                <SmartMoneyInput label="قیمت فروش (تومان)" value={salePrice} onChange={setSalePrice} span />
+                <SmartMoneyInput
+                  label="قیمت فروش (تومان)"
+                  value={salePrice}
+                  onChange={setSalePrice}
+                  required={userRole === 'admin' && status === 'published'}
+                  wide
+                  placeholder="مثلاً 18,500,000,000"
+                />
               ) : deal === 'rent' ? (
                 <>
-                  <SmartMoneyInput label="ودیعه (تومان)" value={deposit} onChange={setDeposit} />
-                  <SmartMoneyInput label="اجاره ماهانه (تومان)" value={monthlyRent} onChange={setMonthlyRent} />
+                  <SmartMoneyInput
+                    label="ودیعه (تومان)"
+                    value={deposit}
+                    onChange={setDeposit}
+                    required={userRole === 'admin' && status === 'published'}
+                    placeholder="مثلاً 1,500,000,000"
+                  />
+                  <SmartMoneyInput
+                    label="اجاره ماهانه (تومان)"
+                    value={monthlyRent}
+                    onChange={setMonthlyRent}
+                    required={userRole === 'admin' && status === 'published'}
+                    placeholder="مثلاً 35,000,000"
+                  />
                 </>
+              ) : userRole === 'agent' ? (
+                <div className={`${styles.agentDraftNotice} ${styles.span2}`}>قیمت برای ثبت پیش‌نویس مشاور اختیاری است؛ اگر می‌دانی نوع معامله را انتخاب کن تا مبلغ را وارد کنی.</div>
               ) : (
-                <div className={`${styles.agentDraftNotice} ${styles.span2}`}>قیمت اختیاری است و بعداً توسط ادمین تکمیل می‌شود.</div>
+                <div className={`${styles.adminInfoNotice} ${styles.span2}`}>ابتدا «نوع معامله» را در بخش اطلاعات اصلی انتخاب کن تا فیلد قیمت فروش یا اجاره نمایش داده شود.</div>
               )}
               {userRole === 'admin' ? (
                 <label className={`${styles.field} ${styles.span2}`}><span>وضعیت فایل</span><select value={status} onChange={(e) => { const next = e.target.value as PublishStatus; setStatus(next); if (next === 'published') setReviewStatus('approved') }}><option value="draft">پیش‌نویس</option><option value="published">منتشر شده</option><option value="sold">فروخته شده</option><option value="rented">اجاره داده شده</option><option value="archived">آرشیو</option></select></label>
@@ -1030,12 +1084,12 @@ export default function IvilaPropertyForm({ propertyId }: { propertyId?: string 
             <div className={styles.amenityPicker}>
               {DEFAULT_AMENITIES.map((item) => <button key={item} type="button" className={amenities.includes(item) ? styles.amenityActive : ''} onClick={() => toggleAmenity(item)}><Check size={14}/>{item}</button>)}
             </div>
-            <div className={styles.customAmenity}><input value={customAmenity} onChange={(e) => setCustomAmenity(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCustomAmenity() } }} placeholder="امکان دیگر..."/><button type="button" onClick={addCustomAmenity}>افزودن</button></div>
-            {customAmenities.length > 0 && (
+            <div className={styles.customAmenity}><input value={customAmenity} onChange={(e) => setCustomAmenity(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addCustomAmenity() } }} placeholder="مثلاً جکوزی، روف‌گاردن، آلاچیق..."/><button type="button" onClick={addCustomAmenity}>افزودن</button></div>
+            {amenities.some((item) => !DEFAULT_AMENITIES.includes(item)) && (
               <div className={styles.customAmenityList}>
-                {customAmenities.map((item) => (
+                {amenities.filter((item) => !DEFAULT_AMENITIES.includes(item)).map((item) => (
                   <button key={item} type="button" onClick={() => toggleAmenity(item)} title="حذف این امکان">
-                    <span>{item}</span><X size={13}/>
+                    <Check size={13}/><span>{item}</span><X size={13}/>
                   </button>
                 ))}
               </div>

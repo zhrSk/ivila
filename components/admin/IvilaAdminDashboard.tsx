@@ -22,6 +22,7 @@ import {
   Waves,
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
+import { effectiveUserRole } from '@/lib/ivila-user-role'
 import styles from './IvilaAdmin.module.css'
 
 type PropertyStatus = 'draft' | 'published' | 'sold' | 'rented' | 'archived'
@@ -61,6 +62,7 @@ type UserInfo = {
   username?: string
   role?: UserRole
   phone?: string
+  email?: string
 }
 
 type MeResponse = { user?: UserInfo | null }
@@ -128,7 +130,7 @@ export default function IvilaAdminDashboard() {
         if (!alive) return
         const current = me.user || null
         let users: UserInfo[] = []
-        if (current?.role === 'admin') {
+        if (effectiveUserRole(current) === 'admin') {
           const usersResponse = await fetch('/api/users?limit=200&sort=name&depth=0', {
             credentials: 'include',
             cache: 'no-store',
@@ -140,7 +142,7 @@ export default function IvilaAdminDashboard() {
         }
         if (!alive) return
         setUser(current)
-        setViewMode(current?.role === 'agent' ? 'mine' : 'all')
+        setViewMode(effectiveUserRole(current) === 'agent' ? 'mine' : 'all')
         setProperties(data.docs || [])
         setTeamUsers(users)
       } catch { if (alive) setError('دریافت اطلاعات پنل انجام نشد. یک‌بار صفحه را Refresh کن.') }
@@ -202,7 +204,7 @@ export default function IvilaAdminDashboard() {
     })
   }, [properties, query, status, viewMode, user?.id, agentFilter, creatorById])
 
-  const isAdmin = user?.role === 'admin'
+  const isAdmin = effectiveUserRole(user) === 'admin'
 
   return (
     <main className={styles.page} dir="rtl">
